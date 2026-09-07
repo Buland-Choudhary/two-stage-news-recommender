@@ -1,0 +1,55 @@
+data:
+  processed_dir: data/processed
+  split_file: data/splits/split_v1.parquet
+  min_history_len: 1
+  empty_history_policy: fallback_r0b
+
+item_tower:
+  mode: frozen_finetuned
+  base_model: sentence-transformers/all-MiniLM-L6-v2
+  max_tokens: 32
+  fields: [title, abstract]
+  projection_dim: 128
+
+user_tower:
+  type: attention
+  heads: 4
+  max_history: 50
+  embed_dim: 128
+  dropout: 0.2
+
+train:
+  batch_size: 4096
+  epochs: 20
+  lr: 1.0e-3
+  weight_decay: 1.0e-5
+  amp: true
+  # GTX 1650 Ti is Turing / CC 7.5 and has no bfloat16 support. Keep AMP on fp16;
+  # use GradScaler first if Phase 1 shows fp16 instability.
+  amp_dtype: fp16
+  logq_correction: false
+  early_stop_metric: val_recall50
+  early_stop_patience: 5
+
+retrieval:
+  top_k: 200
+  index_type: IndexFlatIP
+  candidate_universe: full_corpus
+
+ranker:
+  model: lightgbm
+  num_leaves: 63
+  learning_rate: 0.05
+  n_estimators: 500
+  mix_retrieval_negatives: true
+
+eval:
+  recall_k: [10, 50, 100]
+  ndcg_k: [10, 50]
+  popularity_window_hours: 48
+
+run:
+  seed: 0
+  rung: R3
+  machine: laptop
+  out_dir: results

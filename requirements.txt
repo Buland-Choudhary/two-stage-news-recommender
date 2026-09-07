@@ -1,0 +1,16 @@
+sentence-transformers
+transformers
+faiss-cpu
+lightgbm
+implicit
+scikit-learn
+pandas
+pyarrow
+numpy
+scipy
+pyyaml
+tqdm
+matplotlib
+fastapi
+uvicorn
+pytest
