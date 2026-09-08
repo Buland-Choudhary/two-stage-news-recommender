@@ -465,3 +465,27 @@ Replacing the Week 1 cold definition outright was rejected because it describes 
 Nothing in `split_v1`. It refines the interpretation of D-016.
 
 **Goes in the README?** yes — Dataset and Cold-start methodology.
+
+### D-020 — ALS is a bounded applicability diagnostic, not a tuned rung
+**Date:** 2026-09-07
+**Task:** W2-T1
+**Type:** rescope
+**Spec section affected:** 01_SPEC §6.1, 03_RUNBOOK W2-T1
+
+**What we found / decided:**
+Rescope R1 from a competitive collaborative-filtering rung to a bounded applicability diagnostic. Train one implicit ALS model on the train-window user×item click matrix and report addressability plus full-test metrics with fallback to the strongest R0b denominator (`R0b-prior`, 12h).
+
+**Why:**
+MIND-small train and dev are independent 50,000-user samples, not a single continuous user panel. The raw train/dev overlap is 5,943 users; the split train/test overlap is 5,530 users. In the test set, only 8,388 of 73,152 queries have a learned user factor (11.4665%), only 1,063 of 5,369 unique test candidate articles have an item factor (19.7988%), and only 1,317 of 111,383 test clicks are reachable by ALS at all (1.1824%). This means ALS mostly measures the fallback baseline under the project’s full-corpus protocol.
+
+**Alternatives considered:**
+Tuning ALS hyperparameters was rejected because it cannot fix missing user and item factors under this split. Dropping R1 was rejected because the structural inapplicability is a useful portfolio finding. Evaluating only the warm slice without the full-test fallback was rejected because it would hide the cold-start and independent-sample structure that later models must handle.
+
+**Invalidates:**
+The original assumption that R1 could be read as a normal rung in the same way as R0/R3/R4. It remains in `results/runs.csv` as a diagnostic row, not a tuned baseline.
+
+**Goes in the README?** yes — Results methodology and Dataset limitations.
+
+**Measured R1 results:**
+Full test with strongest-R0b fallback: Recall@50 = 0.086133521, nDCG@10 = 0.012114968, coverage = 0.034044575, Gini = 0.995668045.
+Addressable slice: 1,216 evaluated queries, Recall@50 = 0.037554825, nDCG@10 = 0.011407113.
