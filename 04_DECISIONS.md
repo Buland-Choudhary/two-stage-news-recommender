@@ -227,3 +227,136 @@ Installing Python 3.11 before starting was deferred because no current dependenc
 The assumption in 02_ENGINEERING §1 that the initial local environment is Python 3.11.
 
 **Goes in the README?** yes — Reproducing.
+
+### D-009 — SUPERSEDED by D-011: replace MINDdemo with a user-sampled smoke subset
+**Date:** 2026-09-07
+**Task:** W1-T2, W1-T4
+**Type:** choice
+**Spec section affected:** 01_SPEC §5.2, 03_RUNBOOK W1-T2, 03_RUNBOOK W1-T4
+
+**What we found / decided:**
+Do not depend on the separate MINDdemo download for smoke testing. After downloading `MINDsmall_train`, create `data/raw/DEMO/` by sampling 2,000 users and keeping all impressions for those users.
+
+**Superseded:**
+D-011 restores MINDdemo from the verified Recommenders/MIND HuggingFace mirror. The premise of this decision was wrong.
+
+**Why:**
+The MINDdemo URL is less certain than the confirmed MINDsmall train/dev URLs. Sampling by user preserves the user/history structure that the pipeline is meant to exercise, while a random row sample would shred that structure and test the wrong thing.
+
+**Alternatives considered:**
+Downloading MINDdemo was rejected because it adds a smoke-test dependency on a less certain URL. Sampling random behavior rows was rejected because it breaks the user-level sequence structure. Skipping a smoke subset was rejected because the full MINDsmall path should not be the first place ingest assumptions are tested.
+
+**Invalidates:**
+The W1-T2 expectation that `MINDdemo_train.zip` must be downloaded and extracted.
+
+**Goes in the README?** no — this is a development workflow decision.
+
+### D-010 — MIND source is the Recommenders/MIND HuggingFace mirror
+**Date:** 2026-09-07
+**Task:** W1-T2, W1-T4
+**Type:** discovery
+**Spec section affected:** 01_SPEC §5.2, 01_SPEC §5.3, 03_RUNBOOK W1-T2
+
+**What we found / decided:**
+The official Microsoft release blob is not usable: `mind201910small.blob.core.windows.net` returned `409 PublicAccessNotPermitted`, and `recodatasets.z20.web.core.windows.net` did not resolve in DNS from this machine. The data source for this project is the `Recommenders/MIND` HuggingFace mirror, using `MINDsmall_train.zip`, `MINDsmall_dev.zip`, `MINDdemo_train.zip`, and `MINDdemo_dev.zip`.
+
+**Why:**
+The mirror carries the original MIND TSV layout and is the source the Microsoft Recommenders project migrated to after the public blob stopped working. Verification was done on the files themselves, not just on URL names: each archive contained `behaviors.tsv`, `news.tsv`, `entity_embedding.vec`, and `relation_embedding.vec`; all behavior rows parsed as 5 tab-separated fields; all news rows parsed as 8 tab-separated fields; `MINDsmall_train` and `MINDsmall_dev` each had 50,000 unique users; the train impression range was 2019-11-09 00:00:19 to 2019-11-14 23:59:13; the dev impression range was 2019-11-15 00:00:01 to 2019-11-15 23:58:03.
+
+**Alternatives considered:**
+The official Microsoft blob was rejected because public access is blocked. The recodatasets storage account was rejected because DNS did not resolve. The loicmagne HuggingFace dataset was rejected in D-012 because it is a reranking derivative rather than raw MIND. Kaggle was not attempted because the verified Recommenders/MIND mirror succeeded and Kaggle would require credentials.
+
+**Invalidates:**
+The assumption that the official Microsoft release blob can be used for W1-T2 downloads.
+
+**Goes in the README?** yes — Reproducing.
+
+**Archive SHA-256 sums:**
+`MINDsmall_train.zip`: `6ef97a271580b98ccfc4301ada55cc639423cb0576a78b8dcfcf74a4dbcc3194`
+`MINDsmall_dev.zip`: `d6ce515dcaa6b6d47ddf0a326eebc8a31b84735ae410285c9882ca2a06eec669`
+`MINDdemo_train.zip`: `b1031e2ffcc6d802fc13f60bb959add02ce0d80bb20532e576b7cc8716f43b44`
+`MINDdemo_dev.zip`: `4e330564ab66591ed19ab4421de52a594d9140e3a7bf41f37d1c54b55381f898`
+
+### D-011 — MINDdemo restored as the smoke subset
+**Date:** 2026-09-07
+**Task:** W1-T2, W1-T4
+**Type:** reversal
+**Spec section affected:** 01_SPEC §5.2, 03_RUNBOOK W1-T4
+
+**What we found / decided:**
+Use the real `MINDdemo_train` and `MINDdemo_dev` archives from the verified `Recommenders/MIND` HuggingFace mirror as the smoke-test subset.
+
+**Why:**
+D-009 assumed MINDdemo was less certain than the small split URLs. That premise was wrong: MINDdemo is available from the same verified mirror as MINDsmall, while the previously attempted small URLs were either dead or the wrong dataset. A real MINDdemo smoke test is better than a synthetic user sample because it preserves the release format and keeps smoke-test provenance simple.
+
+**Alternatives considered:**
+The 2,000-user sampled subset from D-009 was kept as a fallback only if MINDdemo failed. It was not needed.
+
+**Invalidates:**
+D-009.
+
+**Goes in the README?** no — this is a development workflow decision.
+
+### D-012 — Rejected mirror: loicmagne/mind_small
+**Date:** 2026-09-07
+**Task:** W1-T2
+**Type:** discovery
+**Spec section affected:** 01_SPEC §5.2, 03_RUNBOOK W1-T2
+
+**What we found / decided:**
+The `loicmagne/mind_small` HuggingFace files downloaded successfully and matched their published SHA-256 sums, but they were not raw MIND-small. Each archive contained a single JSONL file for the MTEB reranking derivative, with `{id, query, positive, negative}` records over raw article titles only.
+
+**Why:**
+Those files have no user IDs, no news IDs, no timestamps, no abstracts, and no categories, so they cannot support temporal splitting, recency-weighted popularity, two-stage recommendation, or cold-start evaluation as specified. Checksums prove file integrity, not dataset provenance; the acceptance test was unsatisfiable, and that was the signal to reject the mirror.
+
+**Alternatives considered:**
+Adapting the project to the reranking derivative was rejected because it would be a different project and would break the MIND-specific invariants. Keeping the files under MIND-shaped names was rejected because a later task could accidentally ingest them.
+
+**Invalidates:**
+Nothing. The files were deleted before the verified Recommenders/MIND archives were downloaded.
+
+**Goes in the README?** yes — Reproducing or Limitations.
+
+**Rejected archive SHA-256 sums:**
+`train.zip`: `5572e63a8ff4079de93e7a00621b3c590a5f07c421892912ba8408a3a40617d5`
+`test.zip`: `9329676593513e0824f3378022da664b79997f174263956e7d082f44ad42b868`
+
+### D-013 — Environment pinned at Week 1 checkpoint
+**Date:** 2026-09-07
+**Task:** W1-T3, W1-T4
+**Type:** choice
+**Spec section affected:** 02_ENGINEERING §1, 02_ENGINEERING §9
+
+**What we found / decided:**
+The environment was pinned with `pip freeze` at the first Week 1 checkpoint rather than waiting until the end of Week 1. `requirements.txt` now records the installed package versions, including `torch==2.11.0+cu128` and `pandas==3.0.5`, with a top comment preserving the CUDA 12.8 torch install command.
+
+**Why:**
+Run comparability matters as soon as rows start entering `results/runs.csv`. Pinning before the first real baselines prevents a mid-week environment drift from making R0/R1/R3 comparisons ambiguous.
+
+**Alternatives considered:**
+Leaving requirements unpinned until the end of Week 1 was rejected because W1-T9 writes real baseline rows. Downgrading pandas was rejected because pandas 3.0.5 handled the ingest path cleanly; no pandas 3.x behavior workaround was required.
+
+**Invalidates:**
+The earlier note in `notes/JOURNAL.md` saying to wait until the end of Week 1 to pin.
+
+**Goes in the README?** yes — Reproducing.
+
+### D-014 — Keep pandas for Week 1 processing
+**Date:** 2026-09-07
+**Task:** W1-T4
+**Type:** choice
+**Spec section affected:** 02_ENGINEERING §3.2
+
+**What we found / decided:**
+Use pandas for Week 1 ingest and stats. The exploded MIND-small impression table has 8,584,442 rows, below the pre-authorized ~20M-row threshold for switching to polars or chunked processing.
+
+**Why:**
+The data fits comfortably on this machine, ingest completed without memory pressure, and keeping pandas avoids adding a second dataframe dependency before the project needs it.
+
+**Alternatives considered:**
+Switching to polars or chunked processing was deferred because the measured row count and observed runtime did not justify the added implementation complexity.
+
+**Invalidates:**
+Nothing.
+
+**Goes in the README?** no — unless reproducibility notes need to explain local processing choices.

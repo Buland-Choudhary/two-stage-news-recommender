@@ -1,0 +1,229 @@
+{
+  "ARTICLE_COUNTS_BY_NEWS_FILE_PRESENCE": {
+    "both": 28460,
+    "dev_only": 13956,
+    "train_only": 22822
+  },
+  "AVG_HISTORY": 32.462412598808434,
+  "CANDIDATES_PER_IMPRESSION_DISTRIBUTION": {
+    "histogram": {
+      "10": 6736,
+      "11": 5749,
+      "12": 6004,
+      "13": 4107,
+      "14": 4404,
+      "15": 2928,
+      "16": 3416,
+      "17": 5344,
+      "18": 2830,
+      "19": 3282,
+      "2": 14434,
+      "20": 3671,
+      "21": 3093,
+      "22": 4737,
+      "23": 3262,
+      "24": 2647,
+      "25": 2847,
+      "26": 3584,
+      "27": 3661,
+      "28": 3124,
+      "29": 2413,
+      "3": 3989,
+      "30": 3139,
+      "31": 2078,
+      "32": 2640,
+      "33": 2042,
+      "34": 2008,
+      "35": 2032,
+      "36": 1838,
+      "37": 2375,
+      "38": 1973,
+      "39": 1608,
+      "4": 8898,
+      "40": 1617,
+      "41": 1793,
+      "42": 1907,
+      "43": 2020,
+      "44": 1669,
+      "45": 1401,
+      "46": 1415,
+      "47": 1463,
+      "48": 1674,
+      "49": 1742,
+      "5": 5080,
+      "50": 1567,
+      "6": 4036,
+      "7": 10468,
+      "8": 3489,
+      "9": 3851,
+      ">50": 58032
+    },
+    "summary": {
+      "max": 299.0,
+      "mean": 37.30468413893802,
+      "min": 2.0,
+      "p25": 10.0,
+      "p50": 24.0,
+      "p75": 51.0,
+      "p90": 92.0,
+      "p95": 118.0,
+      "p99": 171.0
+    }
+  },
+  "CTR": 0.04050665145154455,
+  "DATE_RANGE": {
+    "max": "2019-11-15 23:58:03",
+    "min": "2019-11-09 00:00:19",
+    "span_days": 6.998425925925926
+  },
+  "DATE_RANGE_BY_SOURCE": {
+    "dev": {
+      "max": "2019-11-15 23:58:03",
+      "min": "2019-11-15 00:00:01",
+      "span_days": 0.9986342592592593
+    },
+    "train": {
+      "max": "2019-11-14 23:59:13",
+      "min": "2019-11-09 00:00:19",
+      "span_days": 5.999236111111111
+    }
+  },
+  "FRACTION_EMPTY_HISTORY": 0.023692295658295563,
+  "FRACTION_VERY_SHORT_HISTORY_LT5": 0.13537026816793196,
+  "HISTORY_LENGTH_DISTRIBUTION": {
+    "histogram": {
+      "0": 5452,
+      "1": 3239,
+      "10": 6046,
+      "11": 5963,
+      "12": 5333,
+      "13": 5168,
+      "14": 4894,
+      "15": 4600,
+      "16": 4361,
+      "17": 4146,
+      "18": 3926,
+      "19": 3826,
+      "2": 5442,
+      "20": 3479,
+      "21": 3370,
+      "22": 3359,
+      "23": 3288,
+      "24": 3112,
+      "25": 3196,
+      "26": 2866,
+      "27": 2728,
+      "28": 2519,
+      "29": 2401,
+      "3": 7933,
+      "30": 2626,
+      "31": 2292,
+      "32": 2226,
+      "33": 2184,
+      "34": 2087,
+      "35": 1923,
+      "36": 1922,
+      "37": 1958,
+      "38": 1721,
+      "39": 1903,
+      "4": 9085,
+      "40": 1698,
+      "41": 1898,
+      "42": 1612,
+      "43": 1630,
+      "44": 1351,
+      "45": 1839,
+      "46": 1547,
+      "47": 1309,
+      "48": 1190,
+      "49": 1198,
+      "5": 8777,
+      "50": 1219,
+      "6": 8191,
+      "7": 7685,
+      "8": 6898,
+      "9": 6390,
+      ">50": 45111
+    },
+    "summary": {
+      "max": 558.0,
+      "mean": 32.462412598808434,
+      "min": 0.0,
+      "p25": 8.0,
+      "p50": 19.0,
+      "p75": 42.0,
+      "p90": 78.0,
+      "p95": 108.0,
+      "p99": 190.0
+    }
+  },
+  "INGEST_MANIFEST": {
+    "behavior_field_counts": {
+      "dev": {
+        "all_rows_match_expected": true,
+        "bad_rows": 0,
+        "first_row_field_count": 5,
+        "rows_with_5_fields": 73152
+      },
+      "train": {
+        "all_rows_match_expected": true,
+        "bad_rows": 0,
+        "first_row_field_count": 5,
+        "rows_with_5_fields": 156965
+      }
+    },
+    "body_text_field_present": false,
+    "dataset": "small",
+    "news_field_counts": {
+      "dev": {
+        "all_rows_match_expected": true,
+        "bad_rows": 0,
+        "first_row_field_count": 8,
+        "rows_with_8_fields": 42416
+      },
+      "train": {
+        "all_rows_match_expected": true,
+        "bad_rows": 0,
+        "first_row_field_count": 8,
+        "rows_with_8_fields": 51282
+      }
+    },
+    "news_union": {
+      "both": 28460,
+      "conflicting_shared_news_rows": 0,
+      "dev_only": 13956,
+      "duplicates_dropped_dev": 0,
+      "duplicates_dropped_train": 0,
+      "train_only": 22822
+    },
+    "outputs": {
+      "history": "data/processed/history.parquet",
+      "impressions": "data/processed/impressions.parquet",
+      "news": "data/processed/news.parquet"
+    },
+    "raw_dev_dir": "data/raw/MINDsmall_dev",
+    "raw_train_dir": "data/raw/MINDsmall_train"
+  },
+  "NEWS_WITHOUT_FIRST_IMPRESSION_TS": 42467,
+  "N_ARTICLES": 65238,
+  "N_CANDIDATES": 8584442,
+  "N_CANDIDATES_BY_SOURCE": {
+    "dev": 2740998,
+    "train": 5843444
+  },
+  "N_CLICKS": 347727,
+  "N_CLICKS_BY_SOURCE": {
+    "dev": 111383,
+    "train": 236344
+  },
+  "N_IMPRESSIONS": 230117,
+  "N_IMPRESSIONS_BY_SOURCE": {
+    "dev": 73152,
+    "train": 156965
+  },
+  "N_USERS": 94057,
+  "N_USERS_BY_SOURCE": {
+    "dev": 50000,
+    "train": 50000
+  }
+}

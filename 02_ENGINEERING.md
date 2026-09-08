@@ -111,19 +111,18 @@ two-stage-news-recommender/
 │   ├── figures/
 │   └── tables/
 │
-└── notes/
-    ├── DECISIONS.md
-    └── JOURNAL.md
+├── notes/
+│   └── JOURNAL.md
+└── 04_DECISIONS.md              # append-only decision log
 ```
 
 ### .gitignore essentials
 
 ```
-data/
-!data/splits/
-!data/splits/*
-!data/stats/
-!data/stats/*
+data/raw/
+data/processed/
+data/embeddings/
+data/index/
 *.pth
 *.faiss
 *.npy
