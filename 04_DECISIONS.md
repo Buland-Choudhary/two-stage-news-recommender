@@ -509,3 +509,26 @@ Retrying 4096 with more memory tuning was rejected because the run already hit t
 No prior successful model run. A failed batch-4096 R3 row remains in `results/runs.csv` for auditability.
 
 **Goes in the README?** no — report in experiment configuration tables.
+
+### D-022 — R4 logQ correction uses precomputed train-click frequencies
+**Date:** 2026-09-07
+**Task:** W3-T1
+**Type:** choice
+**Spec section affected:** 02_ENGINEERING §8.1, 03_RUNBOOK W3-T1
+
+**What we found / decided:**
+Use precomputed empirical item frequencies from train-window clicks for the R4 logQ correction. Apply the correction to in-batch item columns during the InfoNCE loss.
+
+**Why:**
+The training set is small enough to count target item frequencies exactly before training, and precomputation keeps all three R4 seeds using the identical correction. A streaming estimate would add moving-state complexity without improving the audit trail for this first logQ pass.
+
+**Alternatives considered:**
+Streaming logQ estimation was rejected for Week 3 because exact precomputed counts are available and reproducible. Tuning the correction after seeing weak results was rejected; the task is to measure the trade-off, not hide it.
+
+**Invalidates:**
+Nothing.
+
+**Goes in the README?** yes — Results methodology.
+
+**Measured R4 outcome:**
+Across three seeds, R4 achieved Recall@50 = 0.004141 +/- 0.000957, coverage = 0.010291 +/- 0.002233, and Gini = 0.997559 +/- 0.000511. Compared with R3 (Recall@50 = 0.006773, coverage = 0.958460, Gini = 0.581140), this correction reduced Recall@50 and made recommendations more concentrated. The intended recall/diversity trade-off did not appear.
