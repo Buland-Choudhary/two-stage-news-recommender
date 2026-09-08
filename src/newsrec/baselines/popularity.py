@@ -74,7 +74,7 @@ def recency_popularity_recommendations(
             active[old_news_id] -= 1
             if active[old_news_id] <= 0:
                 del active[old_news_id]
-        ranked = rank_from_counter(active, corpus_ids)
+        ranked = rank_from_counter_head(active, global_rank, top_k)
         if len(ranked) < top_k:
             seen = set(ranked)
             ranked.extend(news_id for news_id in global_rank if news_id not in seen)
@@ -89,6 +89,20 @@ def rank_from_counter(counter: Counter[str], corpus_ids: list[str]) -> list[str]
     seen = {news_id for news_id, _count in ranked}
     tail = sorted(news_id for news_id in corpus_ids if news_id not in seen)
     return [news_id for news_id, _count in ranked] + tail
+
+
+def rank_from_counter_head(counter: Counter[str], fallback_rank: list[str], top_k: int) -> list[str]:
+    ranked_active = [news_id for news_id, _count in sorted(counter.items(), key=lambda item: (-item[1], item[0]))]
+    if len(ranked_active) >= top_k:
+        return ranked_active[:top_k]
+    seen = set(ranked_active)
+    for news_id in fallback_rank:
+        if news_id in seen:
+            continue
+        ranked_active.append(news_id)
+        if len(ranked_active) >= top_k:
+            break
+    return ranked_active[:top_k]
 
 
 def evaluate_and_log(
@@ -158,6 +172,7 @@ def evaluate_and_log(
             "recall10": result.recall[10],
             "recall50": result.recall[50],
             "recall100": result.recall[100],
+            "ndcg10": result.ndcg[10],
             "ndcg50": result.ndcg[50],
             "coverage": result.coverage,
             "gini": result.gini,

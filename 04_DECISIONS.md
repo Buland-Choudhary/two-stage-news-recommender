@@ -400,3 +400,23 @@ No cold definition change was considered in Week 1 because the strict absent-fro
 Nothing.
 
 **Goes in the README?** yes — Dataset and Cold-start results methodology.
+
+### D-017 — R0b headline window is 48 hours under split_v1
+**Date:** 2026-09-07
+**Task:** W1-T9
+**Type:** choice
+**Spec section affected:** 01_SPEC §6.3, 03_RUNBOOK W1-T9
+
+**What we found / decided:**
+Use the 48-hour recency-weighted popularity baseline as R0b for Track B headline deltas under `split_v1`. It achieved the strongest Recall@50 in the 6h/12h/24h/48h sweep.
+
+**Why:**
+The 6h, 12h, and 24h windows had no train-split clicks available for the Nov 15 test day because Nov 14 is held out as validation, so they fell back to all-time popularity and matched R0a. The 48h window reaches back into Nov 13 training clicks for part of the test day and improved Recall@50 from 0.002425879 to 0.003265130.
+
+**Alternatives considered:**
+Using 6h, 12h, or 24h was rejected because those windows were indistinguishable from R0a under the frozen split. Reporting against R0a was rejected by invariant I4.
+
+**Invalidates:**
+Nothing.
+
+**Goes in the README?** yes — Results methodology and Design decisions.
