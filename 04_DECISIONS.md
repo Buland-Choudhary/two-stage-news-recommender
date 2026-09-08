@@ -402,6 +402,7 @@ Nothing.
 **Goes in the README?** yes — Dataset and Cold-start results methodology.
 
 ### D-017 — R0b headline window is 48 hours under split_v1
+**Status:** SUPERSEDED by D-018.
 **Date:** 2026-09-07
 **Task:** W1-T9
 **Type:** choice
@@ -420,3 +421,47 @@ Using 6h, 12h, or 24h was rejected because those windows were indistinguishable 
 Nothing.
 
 **Goes in the README?** yes — Results methodology and Design decisions.
+
+### D-018 — R0b has train-only and prior-window variants; headline denominator is strongest
+**Date:** 2026-09-07
+**Task:** W2-T0
+**Type:** correction
+**Spec section affected:** 01_SPEC §6.3, 01_SPEC invariant I4, 03_RUNBOOK W2-T0
+
+**What we found / decided:**
+Keep the Week 1 train-only R0b variant, but add `R0b-prior`, which counts clicks from `train ∪ val` strictly before each test impression timestamp. The Track B denominator for later multipliers is the strongest R0b variant by Recall@50, which is `R0b-prior` with a 12-hour trailing window: Recall@50 = 0.096437830.
+
+**Why:**
+The original 6h, 12h, and 24h train-only rows were empty-window cases because train ends on 2019-11-13 and test starts on 2019-11-15. They silently fell back to the R0a ranking, making them bit-identical to R0a. That fallback is not a valid recency measurement. Using Nov 14 validation clicks for Nov 15 test queries is not leakage because those clicks occur strictly before the query timestamp. The stronger denominator is the conservative choice because a weak denominator would inflate every later Track B multiplier.
+
+**Alternatives considered:**
+Using train-only 48h as the headline was rejected because it unnecessarily handicaps the baseline. Deleting the degenerate Week 1 rows was rejected because the run log is append-only; those rows are retained with notes marking the empty-window fallback. Using R0a as the denominator remains rejected by invariant I4.
+
+**Invalidates:**
+D-017 as the headline denominator. Existing rows remain valid historical rows, but the three short-window Week 1 R0b rows are marked degenerate.
+
+**Goes in the README?** yes — Results methodology and Reproducing.
+
+**W2-T0 sweep results:**
+Train-only R0b Recall@50: 6h = 0.002425879, 12h = 0.002425879, 24h = 0.002425879, 48h = 0.003265130.
+Prior-window R0b-prior Recall@50: 6h = 0.051450836, 12h = 0.096437830, 24h = 0.040079731, 48h = 0.012157856.
+
+### D-019 — Cold pool has training and genuine-novelty definitions
+**Date:** 2026-09-07
+**Task:** W2-T0
+**Type:** correction
+**Spec section affected:** 01_SPEC §11.4, 03_RUNBOOK W2-T0
+
+**What we found / decided:**
+Report two cold-pool definitions. The primary model-training definition remains `unseen_in_train`: 3,810 test-period articles are absent from the train window; 99.9877% of test impressions contain at least one such item; 86.8265% of test clicks land on such items. Add `unseen_in_anything_prior` as the genuine-novelty definition: 2,483 test-period articles are absent from train and validation impressions before the test day; 92.8956% of test impressions contain at least one such item; 24.8952% of test clicks land on such items.
+
+**Why:**
+The two questions are different. `unseen_in_train` is the model constraint because R3/R4 train only on the training window. `unseen_in_anything_prior` is the novelty constraint because 1,327 of the train-cold items appeared during validation before the test day. Keeping both prevents Week 4 from overstating novelty while preserving the training-time cold-start measurement.
+
+**Alternatives considered:**
+Replacing the Week 1 cold definition outright was rejected because it describes the model training problem correctly. Ignoring prior validation exposure was rejected because it would overstate genuine novelty on Nov 15.
+
+**Invalidates:**
+Nothing in `split_v1`. It refines the interpretation of D-016.
+
+**Goes in the README?** yes — Dataset and Cold-start methodology.

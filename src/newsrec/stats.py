@@ -146,26 +146,32 @@ def update_cold_pool_stats(processed_dir: Path, split_file: Path, stats_path: Pa
         raise ValueError(f"{missing} impression candidate rows are missing split labels")
 
     train_items = set(impressions.loc[impressions["split"] == "train", "news_id"].astype(str))
+    prior_items = set(impressions.loc[impressions["split"].isin(["train", "val"]), "news_id"].astype(str))
     test = impressions.loc[impressions["split"] == "test"].copy()
-    test_items = set(test["news_id"].astype(str))
-    cold_items = test_items - train_items
-    test["is_cold"] = test["news_id"].astype(str).isin(cold_items)
-
-    test_impression_has_cold = test.groupby("impression_id", observed=True)["is_cold"].any()
-    test_clicks = test.loc[test["label"] == 1]
-    cold_clicks = int(test_clicks["is_cold"].sum())
-    n_test_clicks = int(len(test_clicks))
+    train_cold_pool = cold_pool_definition(test, train_items)
+    prior_cold_pool = cold_pool_definition(test, prior_items)
+    train_cold_public = {key: value for key, value in train_cold_pool.items() if key != "cold_news_ids"}
+    prior_cold_public = {key: value for key, value in prior_cold_pool.items() if key != "cold_news_ids"}
 
     cold_pool = {
-        "n_test_period_articles_absent_from_training_window": int(len(cold_items)),
-        "fraction_test_impressions_with_at_least_one_cold_item": float(test_impression_has_cold.mean()),
-        "fraction_test_clicks_on_cold_items": cold_clicks / n_test_clicks if n_test_clicks else 0.0,
-        "n_test_clicks_on_cold_items": cold_clicks,
-        "n_test_clicks": n_test_clicks,
+        "primary_definition": "unseen_in_train",
+        "unseen_in_train": train_cold_public,
+        "unseen_in_anything_prior": prior_cold_public,
+        "n_test_period_articles_absent_from_training_window": train_cold_pool[
+            "n_test_period_articles_absent_from_reference_window"
+        ],
+        "fraction_test_impressions_with_at_least_one_cold_item": train_cold_pool[
+            "fraction_test_impressions_with_at_least_one_cold_item"
+        ],
+        "fraction_test_clicks_on_cold_items": train_cold_pool["fraction_test_clicks_on_cold_items"],
+        "n_test_clicks_on_cold_items": train_cold_pool["n_test_clicks_on_cold_items"],
+        "n_test_clicks": train_cold_pool["n_test_clicks"],
     }
 
     news = news.copy()
-    news["is_cold"] = news["news_id"].astype(str).isin(cold_items)
+    news["is_cold"] = news["news_id"].astype(str).isin(train_cold_pool["cold_news_ids"])
+    news["is_cold_unseen_in_train"] = news["is_cold"]
+    news["is_cold_unseen_in_anything_prior"] = news["news_id"].astype(str).isin(prior_cold_pool["cold_news_ids"])
     news.to_parquet(processed_dir / "news.parquet", index=False)
 
     stats = json.loads(stats_path.read_text(encoding="utf-8"))
@@ -180,8 +186,33 @@ def update_cold_pool_stats(processed_dir: Path, split_file: Path, stats_path: Pa
             "fraction_test_impressions_with_at_least_one_cold_item"
         ]
         meta["pct_test_clicks_on_cold_items"] = cold_pool["fraction_test_clicks_on_cold_items"]
+        meta["cold_pool_definitions"] = {
+            "unseen_in_train": train_cold_public,
+            "unseen_in_anything_prior": prior_cold_public,
+        }
         meta_path.write_text(json.dumps(meta, indent=2, sort_keys=True), encoding="utf-8")
     return cold_pool
+
+
+def cold_pool_definition(test: pd.DataFrame, reference_items: set[str]) -> dict[str, object]:
+    test = test.copy()
+    test_items = set(test["news_id"].astype(str))
+    cold_items = test_items - reference_items
+    test["is_cold"] = test["news_id"].astype(str).isin(cold_items)
+
+    test_impression_has_cold = test.groupby("impression_id", observed=True)["is_cold"].any()
+    test_clicks = test.loc[test["label"] == 1]
+    cold_clicks = int(test_clicks["is_cold"].sum())
+    n_test_clicks = int(len(test_clicks))
+
+    return {
+        "n_test_period_articles_absent_from_reference_window": int(len(cold_items)),
+        "fraction_test_impressions_with_at_least_one_cold_item": float(test_impression_has_cold.mean()),
+        "fraction_test_clicks_on_cold_items": cold_clicks / n_test_clicks if n_test_clicks else 0.0,
+        "n_test_clicks_on_cold_items": cold_clicks,
+        "n_test_clicks": n_test_clicks,
+        "cold_news_ids": sorted(cold_items),
+    }
 
 
 def build_parser() -> argparse.ArgumentParser:

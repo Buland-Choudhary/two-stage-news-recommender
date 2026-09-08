@@ -4,6 +4,22 @@
     "max(val.ts) <= min(test.ts)": true,
     "min(raw_dev.ts) >= max(raw_train.ts)": true
   },
+  "cold_pool_definitions": {
+    "unseen_in_anything_prior": {
+      "fraction_test_clicks_on_cold_items": 0.24895181490891788,
+      "fraction_test_impressions_with_at_least_one_cold_item": 0.9289561461067367,
+      "n_test_clicks": 111383,
+      "n_test_clicks_on_cold_items": 27729,
+      "n_test_period_articles_absent_from_reference_window": 2483
+    },
+    "unseen_in_train": {
+      "fraction_test_clicks_on_cold_items": 0.8682653546771051,
+      "fraction_test_impressions_with_at_least_one_cold_item": 0.999876968503937,
+      "n_test_clicks": 111383,
+      "n_test_clicks_on_cold_items": 96710,
+      "n_test_period_articles_absent_from_reference_window": 3810
+    }
+  },
   "construction": "train=MINDsmall_train before cutoff, val=MINDsmall_train after cutoff, test=MINDsmall_dev",
   "created": "2026-09-07T20:20:14.043162",
   "dev_starts_after_train_ends": true,

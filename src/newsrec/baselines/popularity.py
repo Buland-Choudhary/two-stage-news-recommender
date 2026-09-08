@@ -6,6 +6,7 @@ import argparse
 import json
 import subprocess
 from collections import Counter, deque
+from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import Iterable
 
@@ -13,6 +14,15 @@ import pandas as pd
 
 from newsrec.metrics import TrackB
 from newsrec.runlog import append_run
+
+
+@dataclass(frozen=True)
+class RecencyDiagnostics:
+    n_queries: int
+    empty_window_queries: int
+    empty_window_fraction: float
+    history_source: str
+    history_splits: tuple[str, ...]
 
 
 def build_truth(impressions: pd.DataFrame, split_name: str = "test") -> pd.DataFrame:
@@ -40,14 +50,22 @@ def recency_popularity_recommendations(
     impressions: pd.DataFrame,
     corpus_ids: list[str],
     window_hours: int,
+    history_source: str = "train",
     split_name: str = "test",
     top_k: int = 100,
-) -> pd.DataFrame:
-    train_clicks = impressions.loc[
-        (impressions["split"] == "train") & (impressions["label"] == 1),
+) -> tuple[pd.DataFrame, RecencyDiagnostics]:
+    if history_source == "train":
+        history_splits = ("train",)
+    elif history_source == "prior":
+        history_splits = ("train", "val")
+    else:
+        raise ValueError(f"unknown recency history_source: {history_source}")
+
+    source_clicks = impressions.loc[
+        (impressions["split"].isin(history_splits)) & (impressions["label"] == 1),
         ["ts", "news_id"],
     ].sort_values("ts")
-    global_rank = rank_from_counter(Counter(train_clicks["news_id"].astype(str)), corpus_ids)
+    global_rank = rank_from_counter(Counter(source_clicks["news_id"].astype(str)), corpus_ids)
 
     test_queries = (
         impressions.loc[impressions["split"] == split_name, ["impression_id", "ts"]]
@@ -57,10 +75,11 @@ def recency_popularity_recommendations(
     window = pd.Timedelta(hours=window_hours)
     active: Counter[str] = Counter()
     active_queue: deque[tuple[pd.Timestamp, str]] = deque()
-    click_iter = train_clicks.itertuples(index=False)
+    click_iter = source_clicks.itertuples(index=False)
     current_click = next(click_iter, None)
 
     rows: list[tuple[str, str, int]] = []
+    empty_window_queries = 0
     for query in test_queries.itertuples(index=False):
         query_ts = query.ts
         while current_click is not None and current_click.ts < query_ts:
@@ -74,6 +93,8 @@ def recency_popularity_recommendations(
             active[old_news_id] -= 1
             if active[old_news_id] <= 0:
                 del active[old_news_id]
+        if not active:
+            empty_window_queries += 1
         ranked = rank_from_counter_head(active, global_rank, top_k)
         if len(ranked) < top_k:
             seen = set(ranked)
@@ -81,7 +102,15 @@ def recency_popularity_recommendations(
         for rank, news_id in enumerate(ranked[:top_k], start=1):
             rows.append((str(query.impression_id), news_id, rank))
 
-    return pd.DataFrame(rows, columns=["query_id", "news_id", "rank"])
+    n_queries = int(test_queries["impression_id"].nunique())
+    diagnostics = RecencyDiagnostics(
+        n_queries=n_queries,
+        empty_window_queries=empty_window_queries,
+        empty_window_fraction=empty_window_queries / n_queries if n_queries else 0.0,
+        history_source=history_source,
+        history_splits=history_splits,
+    )
+    return pd.DataFrame(rows, columns=["query_id", "news_id", "rank"]), diagnostics
 
 
 def rank_from_counter(counter: Counter[str], corpus_ids: list[str]) -> list[str]:
@@ -112,6 +141,7 @@ def evaluate_and_log(
     mode: str,
     window_hours: int | None,
     top_k: int,
+    history_source: str = "train",
 ) -> dict[str, object]:
     news = pd.read_parquet(processed_dir / "news.parquet")
     impressions = pd.read_parquet(processed_dir / "impressions.parquet")
@@ -130,20 +160,29 @@ def evaluate_and_log(
     elif mode == "recency":
         if window_hours is None:
             raise ValueError("window_hours is required for recency mode")
-        recommendations = recency_popularity_recommendations(
+        recommendations, diagnostics = recency_popularity_recommendations(
             impressions,
             corpus_ids,
             window_hours=window_hours,
+            history_source=history_source,
             top_k=top_k,
         )
-        rung = "R0b"
-        notes = f"recency-weighted popularity, trailing {window_hours}h, train split clicks only"
+        rung = "R0b-prior" if history_source == "prior" else "R0b"
+        source_label = "train+val clicks strictly before each query" if history_source == "prior" else "train split clicks only"
+        notes = f"recency-weighted popularity, trailing {window_hours}h, {source_label}"
         config = {
             "mode": mode,
             "window_hours": window_hours,
+            "history_source": history_source,
             "top_k": top_k,
             "candidate_universe": "full_corpus",
+            **asdict(diagnostics),
         }
+        if diagnostics.empty_window_queries:
+            notes += (
+                f"; {diagnostics.empty_window_queries} empty recency-window queries "
+                f"used the {history_source} global popularity fallback"
+            )
     else:
         raise ValueError(mode)
 
@@ -184,13 +223,14 @@ def evaluate_and_log(
     )
     output = {
         "run": row,
-        "metrics": {
+            "metrics": {
             "recall": result.recall,
             "ndcg": result.ndcg,
             "coverage": result.coverage,
             "gini": result.gini,
             "evaluated_queries": result.evaluated_queries,
         },
+        "diagnostics": asdict(diagnostics) if mode == "recency" else {},
     }
     print(json.dumps(output, indent=2, sort_keys=True))
     return output
@@ -218,13 +258,22 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--runs", type=Path, default=Path("results/runs.csv"))
     parser.add_argument("--mode", choices=["naive", "recency"], required=True)
     parser.add_argument("--window-hours", type=int)
+    parser.add_argument("--history-source", choices=["train", "prior"], default="train")
     parser.add_argument("--top-k", type=int, default=100)
     return parser
 
 
 def main(argv: Iterable[str] | None = None) -> None:
     args = build_parser().parse_args(argv)
-    evaluate_and_log(args.processed, args.split, args.runs, args.mode, args.window_hours, args.top_k)
+    evaluate_and_log(
+        args.processed,
+        args.split,
+        args.runs,
+        args.mode,
+        args.window_hours,
+        args.top_k,
+        history_source=args.history_source,
+    )
 
 
 if __name__ == "__main__":
