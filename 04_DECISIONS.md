@@ -489,3 +489,23 @@ The original assumption that R1 could be read as a normal rung in the same way a
 **Measured R1 results:**
 Full test with strongest-R0b fallback: Recall@50 = 0.086133521, nDCG@10 = 0.012114968, coverage = 0.034044575, Gini = 0.995668045.
 Addressable slice: 1,216 evaluated queries, Recall@50 = 0.037554825, nDCG@10 = 0.011407113.
+
+### D-021 — R3/R4 batch size is 2048 on GTX 1650 Ti
+**Date:** 2026-09-07
+**Task:** W2-T3
+**Type:** measurement
+**Spec section affected:** 01_SPEC §7, 03_RUNBOOK W2-T3
+
+**What we found / decided:**
+Use batch size 2048 for R3/R4 two-tower training on this laptop. The configured batch size 4096 OOMed during the R3 backward pass under fp16 AMP. Batch size 2048 trained successfully with the same architecture and optimizer.
+
+**Why:**
+Batch size is a real experimental variable in this project because in-batch negatives supply the retrieval training signal. The 4096 attempt failed before completing an epoch, so continuing at 2048 follows the pre-authorized halve-on-OOM rule while preserving a large in-batch-negative set.
+
+**Alternatives considered:**
+Retrying 4096 with more memory tuning was rejected because the run already hit the hardware limit and 2048 fit cleanly. Dropping below 2048 was unnecessary. Changing dtype was rejected because the GPU is Turing / CC 7.5 and the project standard is fp16 with GradScaler, not bf16.
+
+**Invalidates:**
+No prior successful model run. A failed batch-4096 R3 row remains in `results/runs.csv` for auditability.
+
+**Goes in the README?** no — report in experiment configuration tables.
