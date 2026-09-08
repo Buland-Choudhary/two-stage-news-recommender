@@ -171,6 +171,16 @@ def update_cold_pool_stats(processed_dir: Path, split_file: Path, stats_path: Pa
     stats = json.loads(stats_path.read_text(encoding="utf-8"))
     stats["COLD_POOL"] = cold_pool
     stats_path.write_text(json.dumps(stats, indent=2, sort_keys=True), encoding="utf-8")
+
+    meta_path = split_file.with_name(f"{split_file.stem}_meta.json")
+    if meta_path.exists():
+        meta = json.loads(meta_path.read_text(encoding="utf-8"))
+        meta["n_cold_items_in_test"] = cold_pool["n_test_period_articles_absent_from_training_window"]
+        meta["pct_test_impressions_with_cold_item"] = cold_pool[
+            "fraction_test_impressions_with_at_least_one_cold_item"
+        ]
+        meta["pct_test_clicks_on_cold_items"] = cold_pool["fraction_test_clicks_on_cold_items"]
+        meta_path.write_text(json.dumps(meta, indent=2, sort_keys=True), encoding="utf-8")
     return cold_pool
 
 

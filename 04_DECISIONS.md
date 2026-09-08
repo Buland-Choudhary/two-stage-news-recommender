@@ -360,3 +360,43 @@ Switching to polars or chunked processing was deferred because the measured row 
 Nothing.
 
 **Goes in the README?** no — unless reproducibility notes need to explain local processing choices.
+
+### D-015 — Validation split is the last calendar day of MINDsmall_train
+**Date:** 2026-09-07
+**Task:** W1-T5
+**Type:** choice
+**Spec section affected:** 01_SPEC §8, 03_RUNBOOK W1-T5
+
+**What we found / decided:**
+Use the last calendar day of `MINDsmall_train` as validation. The cutoff is 2019-11-14 00:00:00, yielding 126,695 train impressions, 30,270 validation impressions, and 73,152 test impressions.
+
+**Why:**
+The pre-authorized default was last calendar day unless that produced an implausibly small validation set. It produced 19.3% of MINDsmall_train impressions, comfortably above the 5% threshold, and preserves a simple temporal construction: train on Nov 9-13, validate on Nov 14, test on MINDsmall_dev Nov 15.
+
+**Alternatives considered:**
+Using the last 10% by timestamp was rejected because the default last-day validation set was not too small. Random splitting remains rejected by invariant I1.
+
+**Invalidates:**
+Nothing. This freezes `split_v1`; any later split change must become `split_v2` and invalidates prior run rows.
+
+**Goes in the README?** yes — Dataset and Reproducing.
+
+### D-016 — Cold pool is large under split_v1
+**Date:** 2026-09-07
+**Task:** W1-T6
+**Type:** discovery
+**Spec section affected:** 01_SPEC §11.4
+
+**What we found / decided:**
+Under `split_v1`, 3,810 test-period articles are absent from the training window. 99.9877% of test impressions contain at least one cold item, and 86.8265% of test clicks land on cold items.
+
+**Why:**
+The cold-start arm is viable on this split because cold items are not a contrived slice; they dominate the test-period clicked items. This does not decide Week 4 scope by itself, but it removes the near-empty-pool concern.
+
+**Alternatives considered:**
+No cold definition change was considered in Week 1 because the strict absent-from-training-window pool is large enough to measure.
+
+**Invalidates:**
+Nothing.
+
+**Goes in the README?** yes — Dataset and Cold-start results methodology.

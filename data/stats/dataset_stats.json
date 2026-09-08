@@ -70,6 +70,13 @@
       "p99": 171.0
     }
   },
+  "COLD_POOL": {
+    "fraction_test_clicks_on_cold_items": 0.8682653546771051,
+    "fraction_test_impressions_with_at_least_one_cold_item": 0.999876968503937,
+    "n_test_clicks": 111383,
+    "n_test_clicks_on_cold_items": 96710,
+    "n_test_period_articles_absent_from_training_window": 3810
+  },
   "CTR": 0.04050665145154455,
   "DATE_RANGE": {
     "max": "2019-11-15 23:58:03",

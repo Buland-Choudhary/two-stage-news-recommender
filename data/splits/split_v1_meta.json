@@ -1,0 +1,51 @@
+{
+  "assertions": {
+    "max(train.ts) <= min(val.ts)": true,
+    "max(val.ts) <= min(test.ts)": true,
+    "min(raw_dev.ts) >= max(raw_train.ts)": true
+  },
+  "construction": "train=MINDsmall_train before cutoff, val=MINDsmall_train after cutoff, test=MINDsmall_dev",
+  "created": "2026-09-07T20:20:14.043162",
+  "dev_starts_after_train_ends": true,
+  "n_cold_items_in_test": 3810,
+  "n_impressions": {
+    "test": 73152,
+    "train": 126695,
+    "val": 30270
+  },
+  "n_users": {
+    "test": 50000,
+    "train": 46012,
+    "val": 20179
+  },
+  "pct_test_clicks_on_cold_items": 0.8682653546771051,
+  "pct_test_impressions_with_cold_item": 0.999876968503937,
+  "raw_dev_ts_range": [
+    "2019-11-15 00:00:01",
+    "2019-11-15 23:58:03"
+  ],
+  "raw_train_ts_range": [
+    "2019-11-09 00:00:19",
+    "2019-11-14 23:59:13"
+  ],
+  "split_version": "split_v1",
+  "test_ts_range": [
+    "2019-11-15 00:00:01",
+    "2019-11-15 23:58:03"
+  ],
+  "train_ts_range": [
+    "2019-11-09 00:00:19",
+    "2019-11-13 23:59:21"
+  ],
+  "user_overlap": {
+    "train_test": 5530,
+    "train_val": 16191,
+    "val_test": 3236
+  },
+  "val_cutoff_rule": "last_calendar_day",
+  "val_cutoff_ts": "2019-11-14 00:00:00",
+  "val_ts_range": [
+    "2019-11-14 00:00:00",
+    "2019-11-14 23:59:13"
+  ]
+}
