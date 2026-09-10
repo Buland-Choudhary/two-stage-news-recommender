@@ -423,6 +423,7 @@ Nothing.
 **Goes in the README?** yes — Results methodology and Design decisions.
 
 ### D-018 — R0b has train-only and prior-window variants; headline denominator is strongest
+**Status:** Denominator-selection rule SUPERSEDED by D-023; historical metrics retained.
 **Date:** 2026-09-07
 **Task:** W2-T0
 **Type:** correction
@@ -511,6 +512,7 @@ No prior successful model run. A failed batch-4096 R3 row remains in `results/ru
 **Goes in the README?** no — report in experiment configuration tables.
 
 ### D-022 — R4 logQ correction uses precomputed train-click frequencies
+**Status:** Historical outcome interpretation invalidated by the dated D-022 correction below.
 **Date:** 2026-09-07
 **Task:** W3-T1
 **Type:** choice
@@ -532,3 +534,213 @@ Nothing.
 
 **Measured R4 outcome:**
 Across three seeds, R4 achieved Recall@50 = 0.004141 +/- 0.000957, coverage = 0.010291 +/- 0.002233, and Gini = 0.997559 +/- 0.000511. Compared with R3 (Recall@50 = 0.006773, coverage = 0.958460, Gini = 0.581140), this correction reduced Recall@50 and made recommendations more concentrated. The intended recall/diversity trade-off did not appear.
+
+#### D-021 correction — normalized-logit temperature sweep
+**Date:** 2026-09-09
+**Task:** W3R-T1
+**Type:** correction
+**Spec section affected:** 01_SPEC §7, 03_RUNBOOK W2-T3
+
+**What we found / decided:**
+Both towers normalize their output, but historical R3/R4 used temperature 1.0.
+Those rows remain in runs.csv with SUPERSEDED notes. Sweep 0.02, 0.05, 0.07,
+0.1, 0.2, and 1.0 with otherwise matched architecture, optimizer, seed and
+batch 2048. Select on nonempty-history validation Recall@50 only; rerun the
+selected configuration. Save every epoch's loss and validation metric. Test
+labels are not evaluated during this sweep. Keep fp16 AMP and GradScaler;
+cross-entropy accumulation uses float32 for numerical stability.
+
+**Why:**
+The old loss scaling confounds any architecture or logQ conclusion. A controlled
+sweep tests the proposed explanation empirically, rather than assuming the fix
+must produce a competitive model. All configurations use patience 5 and a
+30-epoch ceiling; hitting the ceiling is reported rather than called convergence.
+
+**Alternatives considered:**
+Hardcoding 0.07 without a sweep would evade the requested diagnosis. Tuning on
+test is prohibited. An extra learned-temperature run is optional and not needed
+unless the fixed sweep leaves a concrete reason to spend that additional run.
+
+**Invalidates:** Historical R3/R4 model-effect interpretations, not split_v1.
+The original D-021 batch-size measurement remains valid.
+
+**Goes in the README?** yes — experimental protocol and corrected results.
+
+**Completed sweep:**
+`r3-sweep_036` selected temperature 0.05 on validation Recall@50 =
+0.015208227730263124, best epoch 1. All six temperatures completed with
+patience-based stopping; the 1.0 control reached validation Recall@50
+0.007071160210098149. S1 did not fire. The requested fresh R3 replay is a
+separate run, and test labels did not choose the temperature.
+
+**Fresh R3 result:** `r3_061` at temperature 0.05 achieved test Recall@50
+0.008468531186296934, versus historical `r3_018` at 0.0067726348166390815
+(1.2504x). This remains below C2 and C3. Temperature correction helps but is
+not sufficient to establish a competitive learned-tower advantage. Track A
+AUC 0.6208399182581702 is an OFF-OBJECTIVE DIAGNOSTIC. Training/validation took
+5.8558 minutes at batch 2048 with 1257.12 MiB peak allocated VRAM.
+
+#### D-022 correction — diagnose logQ against scaled logits
+**Date:** 2026-09-09
+**Task:** W3R-T2
+**Type:** correction
+**Spec section affected:** 02_ENGINEERING §8.1, 03_RUNBOOK W3-T1
+
+**What we found / decided:**
+Retain the precomputed target-sampling distribution, but rerun three R4 seeds
+at the validation-selected temperature. At training start measure the range
+of scaled logits and the range of logQ over trainable sampled classes. Assert
+that the correction range is at most twice the observed logit range, catching
+the assertion as a logged warning per the user's ruling rather than a crash.
+Save the ratio per seed. Unclicked corpus items never enter the training batch
+and are excluded from this diagnostic's correction range.
+
+**Why:** The old normalized-logit range was overwhelmed by the correction.
+Its collapsed diversity cannot be interpreted as an experimental trade-off.
+
+**Alternatives considered:** Changing the correction strength or sampling
+distribution during this rerun would confound the temperature correction.
+
+**Invalidates:** The outcome interpretation in original D-022; old rows remain.
+**Goes in the README?** yes — corrected logQ experiment.
+
+### D-023 — Validation-selected baselines and all-time prior control
+**Date:** 2026-09-09
+**Task:** W3R-T3
+**Type:** correction
+**Spec section affected:** 01_SPEC I4, 03_RUNBOOK W3-T2
+
+**What we found / decided:**
+Add R0a-prior and sweep both R0b variants on validation. Validation holds out
+all Nov 14 labels for both variants: use train-only source clicks for the
+validation day, matching test's frozen-source evaluation. The two variants'
+validation scores therefore coincide. Its cumulative fallback is also strictly
+prior-only. An initial prequential validation pass consumed earlier validation
+clicks; those causal but mismatched-protocol rows are retained and marked
+SUPERSEDED for selection, and the unfinished pass was stopped and logged.
+Choose each variant's window by validation Recall@50, breaking exact ties in
+favor of the shortest window. Freeze that selection before evaluating that
+variant on test. Display both denominators in table v2. The prior variant
+receives Nov 14 labels unavailable to model training; all new models share its
+validation-selected window for their empty-history fallback only.
+
+**Why:** Test-max selection contaminates the baseline comparison, and the
+missing all-time prior control hid how much the additional day of labels helps.
+An empty recency window means fallback, not evidence of optimal decay rate.
+
+**Alternatives considered:** Keep test-best results as explicitly exploratory
+window diagnostics, never selected headline denominators. Dropping the prior
+baseline would hide the extra-data effect; dropping train-only would hide the
+information asymmetry. Refitting models on validation would invalidate their
+early-stopping selection, so is outside this block.
+
+**Invalidates:** D-018's test-selected single denominator, and historical
+R1's end-to-end comparison as a selection-clean result. Raw R1 applicability
+counts remain valid. No split changes.
+
+Earlier test inspection cannot be undone by this repair. Report the current
+validation-only selection rule without describing split_v1 as a fresh untouched
+holdout. Creating a replacement split remains outside this block's authority.
+
+**Goes in the README?** yes — experimental protocol and data-access asymmetry.
+
+### D-024 — Matched cold controls and same-impression Phase 1 pairs
+**Date:** 2026-09-09
+**Task:** W4-T1, W4-T2
+**Type:** choice
+**Spec section affected:** 01_SPEC §7.1, §11, I6, I7
+
+**What we found / decided:**
+Phase 1 pairs are every unordered pair of distinct positive article IDs in the
+same training impression. Preserve repeated observed co-clicks across impressions.
+Use a symmetric contrastive loss, three fixed epochs, lr=2e-5, batch 32 and max
+32 tokens initially, fp16 with GradScaler. All pair articles must belong to the
+training-window shown-article set and exclude test-only articles.
+
+C4 reuses corrected R3 seed 0 as a matched frozen-encoder control, evaluated
+again on both cold definitions with a separate run row. R5 changes only the
+frozen embedding variant and uses the same uncorrected InfoNCE, temperature,
+projection, attention tower, optimizer, and early-stopping policy. R5 runs three
+seeds; C4 stays single-seed per the active ruling. Report the matched seed-0
+delta and the R5 three-seed mean/spread against C4, without significance claims.
+
+C1 transfers train category click counts to all articles, puts the dominant
+history category first, and uses corpus-ID tie breaks. It has no publication
+proxy or test-label signal. C2 uses train-fitted TF-IDF vocabulary and a mean
+history profile. C3 uses a mean of frozen MiniLM histories without trained
+towers. Cold restricted candidates are the test-period shown cold pools under
+each specified definition; full retrieval retains every article in the corpus.
+Query-macro cold recall conditions on a relevant cold click. Cold share is
+top-50 over all queries; coverage and Gini retain the historical top-100 cutoff.
+
+**Why:**
+Same-impression positives have an observed timestamp and require no assumptions
+about untimestamped history clicks. Matched C4/R5 training isolates the encoder
+fine-tuning intervention. C3/C4 additionally differ in learned history
+aggregation, so their gap cannot honestly be credited to projection alone.
+
+**Alternatives considered:**
+Pairing arbitrary history entries would introduce unverified time/session
+assumptions. Applying logQ only to R5 would confound fine-tuning attribution.
+Filtering top-200 full-corpus results to form restricted rankings was rejected:
+restricted rankings are computed afresh over the full cold pool. Redefining the
+requested cold pools was rejected; separately audit their exposure in raw
+training histories and report that caveat if any overlap is found.
+
+**Invalidates:** No split or frozen embedding artifact. No Phase 1 benefit is
+claimed until the matched cold results exist.
+
+**Goes in the README?** yes — cold-start methodology and attribution limits.
+
+### D-025 — Impression-cold articles can occur in raw training histories
+**Date:** 2026-09-09
+**Task:** W4-T2
+**Type:** discovery
+**Spec section affected:** 01_SPEC §11, D-019
+
+**What we found / decided:**
+The actual exposure audit in run `c1_054` found 61 of the 3,810 primary cold
+articles in supplied training histories, including 41 of the 2,483 articles
+unseen in any prior labelled impression. Preserve the requested pools and
+report this overlap alongside every cold definition. These are impression-
+exposure definitions, not claims that training never touched any of their IDs.
+
+**Why:**
+MIND histories predate labelled impressions and can contain articles absent
+from the labelled training candidate set. Their raw presence is observable;
+their per-click timestamps are not. No timestamps are invented. This is not
+evidence of our construction adding future interactions, but it limits claims
+of first-ever novelty and fully unseen training inputs.
+
+**Alternatives considered:**
+Silently removing these articles would change the user-fixed evaluation pools.
+Silently retaining an absolute novelty claim would overstate what the data
+supports. A future stricter unseen-in-impressions-and-history slice can be an
+additional analysis, never a replacement for the logged primary protocol.
+
+**Invalidates:** Unqualified first-ever-novelty wording for D-019's second pool.
+No split, embeddings, or requested cold-pool membership is changed.
+
+**Goes in the README?** yes — dataset limitations and cold-start protocol.
+
+### D-026 — Sampling correction does not guarantee exposure diversity
+**Date:** 2026-09-09
+**Task:** W3R-T2
+**Type:** interpretation correction
+**Spec section affected:** 01_SPEC §9.3, §18; no invariant change
+
+**What we found / decided:**
+The original logQ paper explains that popular items are over-penalized as
+in-batch negatives; the correction targets sampling bias. Lower recommendation
+Gini is not guaranteed by that objective. [Yi et al., §3](https://storage.googleapis.com/gweb-research2023-media/pubtools/5716.pdf).
+
+**Why:** Treat diversity as an empirical outcome. Keep the temperature-fixed,
+three-seed experiment and report recall, coverage, and Gini together.
+
+**Alternatives considered:** Changing the loss to force a diversity result
+would answer a different question and confound the requested comparison.
+
+**Invalidates:** An a priori claim that successful logQ must lower Gini.
+It does not rehabilitate the old mis-scaled runs.
+
+**Goes in the README?** yes — loss objective and result interpretation.

@@ -355,29 +355,8 @@ def public_addressability(addressability: dict[str, object]) -> dict[str, object
 
 
 def strongest_r0b_config(runs_file: Path) -> dict[str, object]:
-    best: dict[str, object] | None = None
-    with runs_file.open(newline="", encoding="utf-8") as fh:
-        for row in csv.DictReader(fh):
-            if row.get("status") != "success" or row.get("rung") not in {"R0b", "R0b-prior"}:
-                continue
-            try:
-                recall50 = float(row.get("recall50") or "nan")
-                config = json.loads(row.get("config_json") or "{}")
-            except (TypeError, ValueError, json.JSONDecodeError):
-                continue
-            if config.get("history_source") not in {"train", "prior"} or config.get("window_hours") is None:
-                continue
-            if best is None or recall50 > float(best["recall50"]):
-                best = {
-                    "run_id": row["run_id"],
-                    "rung": row["rung"],
-                    "recall50": recall50,
-                    "history_source": config["history_source"],
-                    "window_hours": int(config["window_hours"]),
-                }
-    if best is None:
-        raise ValueError("no successful R0b/R0b-prior run with history_source and window_hours found")
-    return best
+    from newsrec.train_retrieval import strongest_r0b_config as selected_prior_config
+    return selected_prior_config(runs_file)
 
 
 def trackb_to_dict(result: object) -> dict[str, object]:

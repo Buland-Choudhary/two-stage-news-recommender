@@ -1,5 +1,11 @@
 # Week 2-3 Report
 
+> Correction dated 2026-09-09: R3/R4 interpretations below are SUPERSEDED.
+> Normalized logits used temperature 1.0, and the baseline window was selected
+> on test. These historical rows are retained; they do not establish an
+> architecture or logQ effect. See notes/WEEK34_REPORT.md and the dated
+> D-021/D-022 corrections plus D-023. Week 2 data/embedding work remains accepted.
+
 ## 1. Task Status
 
 | Task | Status | Acceptance criteria and evidence |

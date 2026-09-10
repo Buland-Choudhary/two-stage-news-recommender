@@ -19,8 +19,10 @@ user_tower:
   dropout: 0.2
 
 train:
-  batch_size: 4096
-  epochs: 20
+  batch_size: 2048
+  # Selected temperature is recorded in results/runs.csv; sweep before changing it.
+  temperature: 0.05
+  epochs: 30
   lr: 1.0e-3
   weight_decay: 1.0e-5
   amp: true

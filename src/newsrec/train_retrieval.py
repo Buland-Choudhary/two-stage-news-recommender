@@ -61,7 +61,7 @@ def train_and_evaluate(
     index_path: Path,
     rung: str = "R3",
     seed: int = 0,
-    batch_size: int = 4096,
+    batch_size: int = 2048,
     epochs: int = 20,
     patience: int = 5,
     lr: float = 1.0e-3,
@@ -72,10 +72,13 @@ def train_and_evaluate(
     dropout: float = 0.2,
     amp: bool = True,
     logq_correction: bool = False,
-    temperature: float = 1.0,
+    temperature: float | None = None,
     eval_batch_size: int = 1024,
     top_k: int = 200,
+    validation_only: bool = False,
 ) -> dict[str, object]:
+    if temperature is None or temperature <= 0:
+        raise ValueError('Pass an explicit positive temperature selected on validation')
     seed_everything(seed)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     if device.type == "cuda":
@@ -117,6 +120,7 @@ def train_and_evaluate(
     history_rows: list[dict[str, object]] = []
     train_started = time.perf_counter()
     best_state_path = out_dir / "model.pt"
+    range_diagnostic = None
 
     for epoch in range(1, epochs + 1):
         model.train()
@@ -137,6 +141,24 @@ def train_and_evaluate(
                     logq=logq,
                     temperature=temperature,
                 )
+            if range_diagnostic is None and logq is not None:
+                with torch.no_grad():
+                    logits = (user_vec.float() @ item_vec.float().T) / temperature
+                    # Only sampled (positive-probability) classes enter this objective.
+                    sampled_logq = logq[torch.unique(torch.from_numpy(train_examples.target_idx).to(device))]
+                    logit_range = float((logits.max() - logits.min()).cpu())
+                    q_range = float((sampled_logq.max() - sampled_logq.min()).cpu())
+                    ratio = q_range / max(logit_range, 1e-12)
+                    try:
+                        assert q_range <= 2 * logit_range, "logQ range exceeds twice the observed scaled-logit range"
+                        warning = False
+                    except AssertionError:
+                        warning = True
+                    range_diagnostic = dict(logit_range=logit_range, logq_range=q_range,
+                                            ratio=ratio, exceeds_twice_logit_range=warning)
+                    print(json.dumps({"logq_range_diagnostic": range_diagnostic}), flush=True)
+            if not torch.isfinite(loss):
+                raise FloatingPointError("non-finite retrieval loss")
             scaler.scale(loss).backward()
             scaler.step(optimizer)
             scaler.update()
@@ -164,6 +186,7 @@ def train_and_evaluate(
             "val_eval_seconds": val_seconds,
         }
         history_rows.append(row)
+        (out_dir / "training_history.json").write_text(json.dumps(history_rows, indent=2))
         print(json.dumps(row, sort_keys=True), flush=True)
 
         if val_recall50 > best_metric:
@@ -179,6 +202,9 @@ def train_and_evaluate(
                         "embed_dim": embed_dim,
                         "max_history": max_history,
                         "logq_correction": logq_correction,
+                        "temperature": temperature,
+                        "heads": heads,
+                        "dropout": dropout,
                     },
                 },
                 best_state_path,
@@ -189,6 +215,21 @@ def train_and_evaluate(
                 break
 
     train_minutes = (time.perf_counter() - train_started) / 60.0
+    if validation_only:
+        config = dict(temperature=temperature, batch_size=batch_size, seed=seed,
+                      best_epoch=best_epoch, best_val_recall50=best_metric,
+                      training_history=history_rows, logq_range_diagnostic=range_diagnostic,
+                      checkpoint=str(best_state_path), evaluation_split="val",
+                      ln_batch_size=float(np.log(batch_size)), epochs_requested=epochs,
+                      patience=patience, lr=lr, logq=logq_correction)
+        row = append_run(runs_file, dict(status="success", rung=rung, stage="validation_selection",
+                        candidate_universe="full_corpus", split_version="split_v1", seed=seed,
+                        batch_size=batch_size, logq=logq_correction, train_minutes=train_minutes,
+                        peak_vram_mb=peak_vram_mb(device), git_commit=git_commit(),
+                        config_json=config, notes="Validation only; test labels not evaluated; fp16 + GradScaler"))
+        output = dict(run=row, config=config)
+        (out_dir / "selection.json").write_text(json.dumps(output, indent=2))
+        return output
     checkpoint = torch.load(best_state_path, map_location=device)
     model.load_state_dict(checkpoint["model_state"])
     item_projected = project_all_items(model, base_tensor, batch_size=8192)
@@ -269,6 +310,7 @@ def train_and_evaluate(
         "logq_correction": logq_correction,
         "logq_method": "precomputed_train_click_frequency" if logq_correction else None,
         "temperature": temperature,
+        "logq_range_diagnostic": range_diagnostic,
         "seed": seed,
         "best_epoch": best_epoch,
         "best_val_recall50": best_metric,
@@ -523,11 +565,13 @@ def evaluate_recall_at_k(
         return float("nan")
     index = build_index(item_projected)
     _scores, indices = search_batched(index, query_vectors, top_k=k, batch_size=batch_size)
-    recs = recommendations_from_indices(queries.nonempty_query_ids, indices, ids, top_k=k)
     truth = build_truth(impressions, split_name=split_name)
-    truth["query_id"] = truth["query_id"].astype(str)
-    truth = truth.loc[truth["query_id"].isin(set(queries.nonempty_query_ids))]
-    result = TrackB.evaluate(recs, truth, corpus_size=len(ids), recall_k=(k,), ndcg_k=(k,))
+    item_index = {item: pos for pos, item in enumerate(ids)}
+    truth_map: dict[str, set[int]] = {}
+    for query, item in truth.itertuples(index=False, name=None):
+        truth_map.setdefault(str(query), set()).add(item_index[str(item)])
+    relevant = [truth_map.get(query, set()) for query in queries.nonempty_query_ids]
+    result = TrackB.evaluate_indices(indices, relevant, len(ids), recall_k=(k,), ndcg_k=(k,))
     return result.recall[k]
 
 
@@ -624,7 +668,10 @@ def evaluate_track_a(
     candidates = candidates.dropna(subset=["query_pos", "item_idx"])
     qpos = candidates["query_pos"].to_numpy(dtype=np.int64)
     ipos = candidates["item_idx"].to_numpy(dtype=np.int64)
-    scores = np.sum(query_vectors[qpos] * item_projected[ipos], axis=1)
+    scores = np.empty(len(qpos), dtype=np.float32)
+    for start in range(0, len(qpos), 65536):
+        stop = start + 65536
+        scores[start:stop] = np.sum(query_vectors[qpos[start:stop]] * item_projected[ipos[start:stop]], axis=1)
     score_frame = pd.DataFrame(
         {
             "impression_id": candidates["impression_id"].to_numpy(),
@@ -658,29 +705,12 @@ def build_logq(target_idx: np.ndarray, n_items: int) -> torch.Tensor:
 
 
 def strongest_r0b_config(runs_file: Path) -> dict[str, object]:
-    best: dict[str, object] | None = None
-    with runs_file.open(newline="", encoding="utf-8") as fh:
-        for row in csv.DictReader(fh):
-            if row.get("status") != "success" or row.get("rung") not in {"R0b", "R0b-prior"}:
-                continue
-            try:
-                recall50 = float(row.get("recall50") or "nan")
-                config = json.loads(row.get("config_json") or "{}")
-            except (TypeError, ValueError, json.JSONDecodeError):
-                continue
-            if config.get("history_source") not in {"train", "prior"} or config.get("window_hours") is None:
-                continue
-            if best is None or recall50 > float(best["recall50"]):
-                best = {
-                    "run_id": row["run_id"],
-                    "rung": row["rung"],
-                    "recall50": recall50,
-                    "history_source": config["history_source"],
-                    "window_hours": int(config["window_hours"]),
-                }
-    if best is None:
-        raise ValueError("no successful R0b/R0b-prior denominator found")
-    return best
+    """Compatibility name: use the prior variant selected on validation, never test."""
+    from newsrec.report import load_runs, selected_baseline
+    row = selected_baseline(load_runs(runs_file), 'prior')
+    config = row['config']
+    return dict(run_id=row['run_id'], rung=row['rung'], recall50=float(row['recall50']),
+                history_source='prior', window_hours=config['window_hours'])
 
 
 def peak_vram_mb(device: torch.device) -> float:
@@ -734,7 +764,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--index", type=Path, default=Path("data/index/r3_seed0.faiss"))
     parser.add_argument("--rung", default="R3")
     parser.add_argument("--seed", type=int, default=0)
-    parser.add_argument("--batch-size", type=int, default=4096)
+    parser.add_argument("--batch-size", type=int, default=2048)
     parser.add_argument("--epochs", type=int, default=20)
     parser.add_argument("--patience", type=int, default=5)
     parser.add_argument("--lr", type=float, default=1.0e-3)
@@ -745,7 +775,7 @@ def build_parser() -> argparse.ArgumentParser:
     parser.add_argument("--dropout", type=float, default=0.2)
     parser.add_argument("--no-amp", action="store_true")
     parser.add_argument("--logq", action="store_true")
-    parser.add_argument("--temperature", type=float, default=1.0)
+    parser.add_argument("--temperature", type=float, required=True)
     parser.add_argument("--eval-batch-size", type=int, default=1024)
     parser.add_argument("--top-k", type=int, default=200)
     return parser

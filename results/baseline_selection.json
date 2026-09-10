@@ -1,0 +1,20 @@
+{
+  "train": {
+    "window_hours": 12,
+    "val_recall50": 0.0657013446854874,
+    "val_run_id": "r0b_026",
+    "history_source": "train",
+    "run_id": "r0b_031",
+    "recall50": 0.002425879149345357,
+    "rung": "R0b"
+  },
+  "prior": {
+    "window_hours": 12,
+    "val_recall50": 0.0657013446854874,
+    "val_run_id": "r0b-prior_045",
+    "history_source": "prior",
+    "run_id": "r0b-prior_051",
+    "recall50": 0.09643782978422966,
+    "rung": "R0b-prior"
+  }
+}

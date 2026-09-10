@@ -5,6 +5,8 @@ from __future__ import annotations
 import argparse
 import csv
 import json
+import fcntl
+import socket
 from datetime import datetime
 from pathlib import Path
 from typing import Iterable
@@ -51,19 +53,27 @@ RUN_COLUMNS = [
 def append_run(path: Path, row: dict[str, object]) -> dict[str, object]:
     path.parent.mkdir(parents=True, exist_ok=True)
     output = {column: row.get(column, "") for column in RUN_COLUMNS}
-    if not output["run_id"]:
-        output["run_id"] = next_run_id(path, str(output.get("rung") or "RUN"))
+    output['machine'] = output['machine'] or socket.gethostname()
     if not output["timestamp"]:
         output["timestamp"] = datetime.now().isoformat(timespec="seconds")
-    if isinstance(output["config_json"], dict):
-        output["config_json"] = json.dumps(output["config_json"], sort_keys=True)
+    config = output["config_json"]
+    if not config:
+        config = {}
+    if isinstance(config, dict):
+        config.setdefault('temperature', None)
+        output["config_json"] = json.dumps(config, sort_keys=True)
 
-    file_exists = path.exists()
-    with path.open("a", newline="", encoding="utf-8") as fh:
+    with path.open("a+", newline="", encoding="utf-8") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        if not output["run_id"]:
+            output["run_id"] = next_run_id(path, str(output.get("rung") or "RUN"))
+        fh.seek(0, 2)
+        file_exists = fh.tell() > 0
         writer = csv.DictWriter(fh, fieldnames=RUN_COLUMNS)
         if not file_exists:
             writer.writeheader()
         writer.writerow(output)
+        fh.flush()
     return output
 
 

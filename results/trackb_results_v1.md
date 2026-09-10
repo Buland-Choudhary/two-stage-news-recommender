@@ -1,5 +1,9 @@
 # Track B Results Table v1
 
+> Historical table, SUPERSEDED by trackb_results_v2.md. R3/R4 used mis-scaled
+> normalized logits; the old denominator was selected on test. Do not use
+> this table for current architecture, diversity, or headline multiplier claims.
+
 Framing note: Track B retrieves from the full 65,238-article corpus. 42,467 articles never appear in any labelled impression, and only 5,369 articles are shown on the test day, so absolute Recall@K is structurally small.
 
 Denominator: R0b-prior `r0b-prior_012` (prior, 12h), Recall@50 = 0.096437830.

@@ -243,6 +243,17 @@ Columns per `01_SPEC.md` §16. Written **at completion including on failure** (`
 
 ## 4. Config
 
+**Week 3 repair update:** `configs/base.yaml` documents project settings. The
+current experiment scripts pass explicit arguments (rather than loading YAML)
+and serialize them into `config_json`. Retrieval uses batch 2048 and
+validation-selected temperature 0.05. The runnable Week 3/4 commands are
+`scripts/select_baselines.py`, `scripts/week34.py {sweep,r3,r4,r5}`,
+`scripts/evaluate_week34.py {r3,r4,controls,c4,r5}`, and
+`python -m newsrec.finetune --temperature 0.05`. Training and test evaluation
+are separate commands and rows. The prospective YAML/CLI design below is not
+fully implemented; do not assume its `--config` examples are current APIs.
+Generate the consolidated report with `scripts/report_week34.py`.
+
 YAML with `base.yaml` defaults and experiment overrides. Resolve into a validated dataclass so typos fail loudly.
 
 ```yaml
@@ -416,6 +427,13 @@ python -m newsrec.report --runs results/runs.csv --out results/tables/
 ## 8. Two implementation notes worth getting right early
 
 ### 8.1 logQ needs a frequency estimate, and where it comes from matters
+
+With normalized towers, training logits are `(user @ item.T) / temperature`.
+The selected temperature is explicit in every training call and run config.
+Subtract precomputed train target log-probabilities only after this scaling.
+Record the logQ/scaled-logit range ratio over sampled classes at training start;
+an assertion exceeding 2x is a logged diagnostic per D-022, not a silent crash.
+Sampling correction does not guarantee a reduction in exposure Gini (D-026).
 
 `Q(i)` is the probability item `i` appears as an in-batch negative. Two implementations:
 

@@ -77,6 +77,33 @@ class TrackB:
     TRUTH_COLUMNS = {"query_id", "news_id"}
 
     @staticmethod
+    def evaluate_indices(ranked: np.ndarray, relevant: list[set[int]], corpus_size: int,
+                         recall_k: Iterable[int] = (10, 50, 100),
+                         ndcg_k: Iterable[int] = (10, 50)) -> TrackBResult:
+        """Exact same query-macro metrics on integer corpus indices; no ranking labels."""
+        if ranked.ndim != 2 or len(ranked) != len(relevant):
+            raise ValueError("Track B requires [queries, ranks] and one relevance set per query")
+        if not np.issubdtype(ranked.dtype, np.integer):
+            raise ValueError("Track B rankings must be integer corpus indices")
+        if np.any(ranked < 0) or np.any(ranked >= corpus_size):
+            raise ValueError("ranking contains an index outside the corpus")
+        recall_k, ndcg_k = tuple(recall_k), tuple(ndcg_k)
+        width = max(*recall_k, *ndcg_k)
+        if ranked.shape[1] < width:
+            raise ValueError("not enough retrieved ranks for requested metrics")
+        head = ranked[:, :width]
+        hits = np.array([[int(x) in truth for x in row] for row, truth in zip(head, relevant, strict=True)])
+        sizes = np.array([len(truth) for truth in relevant])
+        keep = sizes > 0
+        discounts = 1 / np.log2(np.arange(2, width + 2))
+        recalls = {k: float(np.mean(hits[keep, :k].sum(1) / sizes[keep])) for k in recall_k}
+        ndcgs = {k: float(np.mean((hits[keep, :k] * discounts[:k]).sum(1) /
+                                 np.cumsum(discounts)[np.minimum(sizes[keep], k) - 1])) for k in ndcg_k}
+        counts = np.bincount(head.ravel(), minlength=corpus_size)
+        return TrackBResult(recalls, ndcgs, float(np.count_nonzero(counts) / corpus_size),
+                            gini(counts), int(keep.sum()))
+
+    @staticmethod
     def evaluate(
         recommendations: pd.DataFrame,
         truth: pd.DataFrame,

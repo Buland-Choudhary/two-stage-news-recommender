@@ -5,6 +5,7 @@ from __future__ import annotations
 import argparse
 import json
 import subprocess
+import heapq
 from collections import Counter, deque
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -39,7 +40,12 @@ def naive_popularity_recommendations(
     corpus_ids: list[str],
     split_name: str = "test",
     top_k: int = 100,
+    history_source: str = "train",
 ) -> pd.DataFrame:
+    if history_source == "prior":
+        recs, _ = recency_popularity_recommendations(impressions, corpus_ids, None,
+                                                     history_source, split_name, top_k)
+        return recs
     train_clicks = impressions.loc[(impressions["split"] == "train") & (impressions["label"] == 1), "news_id"]
     ranked_ids = rank_from_counter(Counter(train_clicks.astype(str)), corpus_ids)[:top_k]
     query_ids = impressions.loc[impressions["split"] == split_name, "impression_id"].drop_duplicates().astype(str)
@@ -49,7 +55,7 @@ def naive_popularity_recommendations(
 def recency_popularity_recommendations(
     impressions: pd.DataFrame,
     corpus_ids: list[str],
-    window_hours: int,
+    window_hours: int | None,
     history_source: str = "train",
     split_name: str = "test",
     top_k: int = 100,
@@ -65,14 +71,16 @@ def recency_popularity_recommendations(
         (impressions["split"].isin(history_splits)) & (impressions["label"] == 1),
         ["ts", "news_id"],
     ].sort_values("ts")
-    global_rank = rank_from_counter(Counter(source_clicks["news_id"].astype(str)), corpus_ids)
+    cumulative: Counter[str] = Counter()
+    corpus_rank = sorted(corpus_ids)
+    global_rank = corpus_rank[:top_k]
 
     test_queries = (
         impressions.loc[impressions["split"] == split_name, ["impression_id", "ts"]]
         .drop_duplicates("impression_id")
         .sort_values("ts")
     )
-    window = pd.Timedelta(hours=window_hours)
+    window = pd.Timedelta(hours=window_hours) if window_hours is not None else None
     active: Counter[str] = Counter()
     active_queue: deque[tuple[pd.Timestamp, str]] = deque()
     click_iter = source_clicks.itertuples(index=False)
@@ -82,12 +90,18 @@ def recency_popularity_recommendations(
     empty_window_queries = 0
     for query in test_queries.itertuples(index=False):
         query_ts = query.ts
+        changed = False
         while current_click is not None and current_click.ts < query_ts:
+            assert current_click.ts < query_ts, "popularity incorporated a non-prior click"
             news_id = str(current_click.news_id)
             active[news_id] += 1
+            cumulative[news_id] += 1
+            changed = True
             active_queue.append((current_click.ts, news_id))
             current_click = next(click_iter, None)
-        lower = query_ts - window
+        if changed:
+            global_rank = rank_from_counter_head(cumulative, corpus_rank, top_k)
+        lower = query_ts - window if window is not None else pd.Timestamp.min
         while active_queue and active_queue[0][0] < lower:
             _old_ts, old_news_id = active_queue.popleft()
             active[old_news_id] -= 1
@@ -95,7 +109,7 @@ def recency_popularity_recommendations(
                 del active[old_news_id]
         if not active:
             empty_window_queries += 1
-        ranked = rank_from_counter_head(active, global_rank, top_k)
+        ranked = global_rank if window is None else rank_from_counter_head(active, global_rank, top_k)
         if len(ranked) < top_k:
             seen = set(ranked)
             ranked.extend(news_id for news_id in global_rank if news_id not in seen)
@@ -121,7 +135,8 @@ def rank_from_counter(counter: Counter[str], corpus_ids: list[str]) -> list[str]
 
 
 def rank_from_counter_head(counter: Counter[str], fallback_rank: list[str], top_k: int) -> list[str]:
-    ranked_active = [news_id for news_id, _count in sorted(counter.items(), key=lambda item: (-item[1], item[0]))]
+    ranked_active = [news_id for news_id, _count in heapq.nsmallest(
+        top_k, counter.items(), key=lambda item: (-item[1], item[0]))]
     if len(ranked_active) >= top_k:
         return ranked_active[:top_k]
     seen = set(ranked_active)

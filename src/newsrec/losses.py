@@ -11,13 +11,15 @@ def in_batch_contrastive_loss(
     item_vec: torch.Tensor,
     target_item_idx: torch.Tensor | None = None,
     logq: torch.Tensor | None = None,
-    temperature: float = 1.0,
+    temperature: float = 0.07,
 ) -> torch.Tensor:
     """InfoNCE loss with optional logQ correction on in-batch item columns."""
 
     if user_vec.shape != item_vec.shape:
         raise ValueError("user_vec and item_vec must have the same [B, D] shape")
-    logits = user_vec @ item_vec.T
+    if temperature <= 0:
+        raise ValueError("temperature must be positive")
+    logits = (user_vec @ item_vec.T).float()
     logits = logits / temperature
     if logq is not None:
         if target_item_idx is None:
