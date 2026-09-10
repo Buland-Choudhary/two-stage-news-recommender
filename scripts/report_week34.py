@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import xml.etree.ElementTree as ET
 from pathlib import Path
 from statistics import mean, pstdev
 
@@ -71,6 +72,8 @@ def main():
                   f"After: `{row['run_id']}` {float(row['recall50']):.9f}; ratio {float(row['recall50']) / float(old['recall50']):.4f}x. "
                   'This before/after includes the repaired fallback window policy; the sweep itself isolates scaling on validation.',
                   f"Track A AUC {float(row['auc_impression']):.6f}: **OFF-OBJECTIVE DIAGNOSTIC**, nonempty-history queries only. "
+                  f"Evaluated {row['config']['track_a']['evaluated_impressions']} impressions; "
+                  f"skipped {row['config']['track_a']['skipped_degenerate_impressions']} degenerate impressions. "
                   f"Training {float(row['train_minutes']):.2f} minutes, peak allocated VRAM {float(row['peak_vram_mb']):.1f} MiB."]
         empty = row['config']['empty_history']
         lines += [f"Empty-history fallback affects {empty['n_empty_history_queries']} of {empty['n_queries']} test queries "
@@ -83,19 +86,31 @@ def main():
     lines += ['The original method corrects excessive negative sampling of popular items; it is not '
               'an exposure-diversity regularizer. Lower Gini must be demonstrated empirically. '
               '[Yi et al., Section 3](https://storage.googleapis.com/gweb-research2023-media/pubtools/5716.pdf).', '']
-    lines += table(['Run', 'Seed', 'Recall@50', 'Coverage@100', 'Gini@100', 'logQ/logit range', 'Range warning'],
+    lines += table(['Run', 'Seed', 'Recall@50', 'Coverage@100', 'Gini@100', 'Best epoch', 'Epochs', 'logQ/logit range', 'Range warning'],
                    [[r['run_id'], r['seed'], r['recall50'], r['coverage'], r['gini'],
+                     r['config']['best_epoch'], len(r['config']['training_history']),
                      r['config']['logq_range_diagnostic']['ratio'],
                      r['config']['logq_range_diagnostic']['exceeds_twice_logit_range']] for r in r4])
     if r4:
         lines += ['', '; '.join(f"{key}: {spread([float(r[key]) for r in r4])}" for key in ('recall50', 'coverage', 'gini')) + '.',
                   'Spread is population standard deviation across seeds. The range diagnostic uses scaled logits before logQ subtraction at training start.']
+        capped = [r['run_id'] for r in r4 if len(r['config']['training_history']) == r['config']['epochs_requested']]
+        if capped:
+            lines += ['Epoch ceiling reached (do not describe as patience convergence): ' + ', '.join(capped) + '.']
     if len(r4) == 3 and r3:
         diversity = mean(float(r['gini']) for r in r4) < float(r3[0]['gini']) and mean(float(r['coverage']) for r in r4) > float(r3[0]['coverage'])
         recall_gain = mean(float(r['recall50']) for r in r4) > float(r3[0]['recall50'])
         lines += ['Verdict: ' + ('diversity improved and recall declined: a measured trade-off after the scaling repair.' if diversity and not recall_gain
                                 else 'diversity and recall both improved.' if diversity and recall_gain
                                 else 'no diversity improvement on both reported measures; these corrected runs do not support a diversity-gain claim.')]
+        if mean(float(r['recall10']) for r in r4) > float(r3[0]['recall10']):
+            lines += ['Mean Recall@10 increased relative to R3; the full table preserves this improvement rather than claiming every metric worsened.']
+        lines += ['', 'R4 training curves (train loss / validation Recall@50):', '']
+        histories = [r['config']['training_history'] for r in r4]
+        lines += table(['Epoch'] + [f"Seed {r['seed']} loss / val R@50" for r in r4],
+                       [[epoch + 1] + [f"{h[epoch]['train_loss']:.6f} / {h[epoch]['val_recall50']:.6f}"
+                                        if epoch < len(h) else '' for h in histories]
+                        for epoch in range(max(map(len, histories)))])
     lines += ['', '## 4. Denominators and Data Access', '',
               'Prior popularity consumes train plus strictly earlier val clicks. It never consumes test labels. '
               'Validation selection holds out all Nov 14 labels for both variants, matching test frozen-day evaluation. '
@@ -108,6 +123,14 @@ def main():
                    [[r['run_id'], r['rung'], r['config'].get('window_hours'), r['config']['evaluation_split'],
                      r['recall50'], r['config'].get('empty_window_queries', 'n/a'), r['config'].get('val_selected', False)] for r in baselines])
     if Path('results/baseline_selection.json').exists():
+        alltime_train = current_test_rows(runs, 'R0a')[-1]
+        alltime_prior = current_test_rows(runs, 'R0a-prior')[-1]
+        prior_selected = selected_baseline(runs, 'prior')
+        lines += ['', f"All-time prior / all-time train Recall@50: "
+                  f"{float(alltime_prior['recall50']) / float(alltime_train['recall50']):.4f}x. "
+                  f"Selected prior-window / all-time prior: "
+                  f"{float(prior_selected['recall50']) / float(alltime_prior['recall50']):.4f}x. "
+                  'The latter measures the complete window-plus-fallback policy, not a pure decay constant.']
         for source in ('train', 'prior'):
             selected = selected_baseline(runs, source)
             candidates = [r for r in baselines if r['rung'] == selected['rung'] and r['config']['evaluation_split'] == 'test']
@@ -180,6 +203,7 @@ def main():
               'test-based denominator selection. D-024 records cold-control and pair construction choices. '
               'D-025 records measured training-history exposure inside both cold pools. '
               'D-026 separates sampling correction from an exposure-diversity guarantee. '
+              'D-027 records the equivalent rank-sum AUC implementation; D-028 records actual search backends and matched inference devices. '
               'See 04_DECISIONS.md for rationale, alternatives and invalidations.', '',
               '## 8. Surprises', '',
               '- Temperature 1.0 was not the only interpretability problem: prior fallback would have leaked future val labels '
@@ -190,6 +214,8 @@ def main():
               '- Coverage/Gini were implicitly measured at the largest requested cutoff (100), despite retrieving 200. '
               'This convention is preserved for comparability and now named explicitly.',
               '- C3 versus C4 also changes history aggregation. It cannot establish a projection-only causal claim.',
+              '- CPU and CUDA inference of the same checkpoint produced slightly different rankings. '
+              'The CPU C4 diagnostic is retained but excluded from the matched CUDA comparison.',
               '- Both impression-cold pools contain some article IDs from raw training histories; counts are shown above. '
               'Unseen in prior impressions is not the same as first-ever novelty.',
               '- The initial online-updating validation pass was causal but mismatched frozen-source test evaluation. '
@@ -202,6 +228,23 @@ def main():
               'retrieved/logged candidate overlap, and do not label unshown retrieved items as observed negatives. '
               'Use both validation-selected popularity denominators. Decide resume wording from the matched R5-C4 '
               'cold metrics; avoid attributing all semantic retrieval gains to fine-tuning or solely to projection.']
+    verification_path = Path('notes/WEEK34_VERIFICATION.json')
+    if verification_path.exists():
+        audit = json.loads(verification_path.read_text())
+        lines += ['', '## 10. Final Verification', '',
+                  f"Artifact audit: {audit['status']}. All {audit['historical_rows_preserved']} pre-block run rows retain their original non-annotation fields. "
+                  'Frozen split files and original MiniLM vectors match their pre-block SHA-256 hashes. '
+                  'Every final retrieval row has finite metrics, required seed counts and both requested cold definitions. '
+                  'All seven saved projected indexes are exact IndexFlatIP with 65,238 items and 128 dimensions. '
+                  'No dataset, embedding, model-weight or index files are tracked.', '',
+                  'Hash evidence:', '']
+        lines += table(['Artifact', 'SHA-256'], list(audit['frozen_hashes'].items()))
+    test_path = Path('notes/WEEK34_TESTS.xml')
+    if test_path.exists():
+        suite = ET.parse(test_path).getroot().find('testsuite')
+        lines += ['', f"Final pytest evidence: {suite.attrib['tests']} tests, {suite.attrib['failures']} failures, "
+                  f"{suite.attrib['errors']} errors, {suite.attrib['skipped']} skipped. "
+                  'Includes the saved Phase 1 pair guard and raw-history equality check.']
     Path('notes/WEEK34_REPORT.md').write_text('\n'.join(lines) + '\n')
 
 

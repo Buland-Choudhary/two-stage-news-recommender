@@ -9,7 +9,7 @@ import pandas as pd
 import torch
 
 from newsrec.baselines.popularity import build_truth, recency_popularity_recommendations
-from newsrec.index import build_index, search_batched
+from newsrec.index import build_index, save_index, search_batched
 from newsrec.metrics import TrackB
 from newsrec.runlog import append_run
 from newsrec.towers import TwoTowerRetrievalModel
@@ -113,12 +113,20 @@ def log_evaluation(data, rung, ranked, restricted, config, seed=0, extra=None):
                                 cold_share_topk=float(np.isin(ranked[:, :50], pool).mean()),
                                 n_cold_articles=len(pool), evaluated_queries=full.evaluated_queries)
     config = {**config, 'evaluation_split': 'test', 'cold_definitions': cold,
+              'corpus_counts': {
+                  'n_articles': len(data.ids),
+                  'n_never_in_impressions': len(set(data.ids) - set(data.impressions.news_id.astype(str))),
+                  'n_test_shown': int(data.impressions.loc[data.impressions.split == 'test', 'news_id'].nunique()),
+              },
               'baseline_selection': json.loads(Path('results/baseline_selection.json').read_text()),
               'cold_articles_in_raw_training_histories': data.history_cold_exposure(),
               'cold_restricted_pool': 'test-period shown articles absent from exposure window',
               'cold_query_population': 'queries with at least one relevant cold click',
               'coverage_gini_k': 100, 'cold_share_k': 50,
-              'empty_history': queries.stats, 'index_type': 'IndexFlatIP', 'search_batch_size': 1024}
+              'empty_history': queries.stats,
+              'index_type': ('category_sort' if rung == 'C1' else
+                             'sparse_exact_cosine' if rung == 'C2' else 'IndexFlatIP'),
+              'search_batch_size': (None if rung == 'C1' else 128 if rung == 'C2' else 1024)}
     return _append_evaluation(rung, seed, result, cold, config, extra)
 
 
@@ -157,6 +165,11 @@ def evaluate_checkpoint(data, directory, rung, seed=0):
     model.load_state_dict(checkpoint['model_state'])
     base_tensor = torch.from_numpy(base).to(device)
     item_vectors = project_all_items(model, base_tensor, 8192)
+    projected_path = directory / 'item_emb_128.npy'
+    index_path = Path('data/index') / f'week34_{directory.name}.faiss'
+    np.save(projected_path, item_vectors)
+    (directory / 'ids.json').write_text(json.dumps(ids, indent=2))
+    save_index(build_index(item_vectors), index_path)
     queries = data.queries('test')
     user_vectors = encode_query_histories(model, base_tensor, queries.history_idx, 1024)
     ranked = rank_dense(data, item_vectors, user_vectors, queries)
@@ -165,6 +178,8 @@ def evaluate_checkpoint(data, directory, rung, seed=0):
     tracka, diag = evaluate_track_a(model, base_tensor, item_vectors, data.impressions, queries, data.item_index, 1024)
     np.save(directory / 'test_ranked.npy', ranked)
     config = {**config, 'base_embeddings': str(embedding), 'track_a': {**diag, 'auc': tracka.auc},
+              'evaluation_device': str(device),
+              'projected_embedding_path': str(projected_path), 'index_path': str(index_path),
               'architecture': dict(input_dim=base.shape[1], embed_dim=128, heads=4,
                                    max_history=50, dropout=0.2, user_id_embedding=False),
               'encoder_seed': 0, 'seed_scope': 'projection and user-tower training',

@@ -66,3 +66,20 @@ def test_track_namespaces_reject_wrong_shape() -> None:
         TrackA.evaluate(track_b_like)
     with pytest.raises(ValueError):
         TrackB.evaluate(track_a_like, truth, corpus_size=1)
+
+
+def test_rank_sum_auc_matches_sklearn_with_ties_and_degenerate_groups():
+    from sklearn.metrics import roc_auc_score
+    rng = np.random.default_rng(17)
+    rows, expected, skipped = [], [], 0
+    for impression in range(100):
+        labels = rng.integers(0, 2, size=int(rng.integers(2, 60)))
+        scores = rng.integers(-3, 4, size=len(labels)).astype(float)
+        rows.extend((impression, float(score), int(label)) for score, label in zip(scores, labels))
+        if len(set(labels)) == 1:
+            skipped += 1
+        else:
+            expected.append(roc_auc_score(labels, scores))
+    result = TrackA.evaluate(pd.DataFrame(rows, columns=['impression_id', 'score', 'label']))
+    assert result.auc == pytest.approx(np.mean(expected), abs=1e-12)
+    assert result.skipped_impressions == skipped

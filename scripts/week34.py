@@ -52,11 +52,11 @@ def sweep():
 
 def main():
     parser = argparse.ArgumentParser()
-    parser.add_argument('task', choices=['mark', 'mark_prequential', 'sweep', 'r3', 'r4', 'r5'])
+    parser.add_argument('task', choices=['mark', 'mark_prequential', 'mark_control_metadata', 'sweep', 'r3', 'r4', 'r5'])
     args = parser.parse_args()
     torch.set_num_threads(4)
     faiss.omp_set_num_threads(4)
-    if args.task in {'mark', 'mark_prequential'}:
+    if args.task in {'mark', 'mark_prequential', 'mark_control_metadata'}:
         with RUNS.open(newline='') as stream:
             reader = csv.DictReader(stream)
             fields, rows = reader.fieldnames, list(reader)
@@ -64,6 +64,17 @@ def main():
             if args.task == 'mark' and row['run_id'] in {'r3_018', 'r4_019', 'r4_020', 'r4_021'} and 'SUPERSEDED' not in row['notes']:
                 row['notes'] += '; SUPERSEDED: temperature=1.0 with normalized embeddings; invalid model-effect interpretation'
             config = json.loads(row.get('config_json') or '{}')
+            if args.task == 'mark_control_metadata' and row['run_id'] in {'c1_054', 'c2_056'}:
+                config['index_type'] = 'category_sort' if row['rung'] == 'C1' else 'sparse_exact_cosine'
+                config['search_batch_size'] = None if row['rung'] == 'C1' else 128
+                row['config_json'] = json.dumps(config, sort_keys=True)
+                if 'search metadata corrected' not in row['notes']:
+                    row['notes'] += '; search metadata corrected 2026-09-09; rankings and metrics unchanged'
+            if args.task == 'mark_control_metadata' and row['run_id'] == 'c4_063':
+                config['evaluation_device'] = 'cpu'
+                row['config_json'] = json.dumps(config, sort_keys=True)
+                if 'SUPERSEDED' not in row['notes']:
+                    row['notes'] += '; SUPERSEDED for matched comparison: CPU inference diagnostic; final C4 uses CUDA as R3/R5 do'
             if (args.task == 'mark_prequential' and config.get('selection_metric') == 'val_recall50'
                     and config.get('history_source') == 'prior' and 'validation_label_policy' not in config
                     and 'SUPERSEDED' not in row['notes']):

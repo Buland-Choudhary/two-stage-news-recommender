@@ -45,9 +45,16 @@ def generate_trackb_table(runs_file, stats_file, out_path):
     rows = load_runs(runs_file)
     stats = json.loads(Path(stats_file).read_text())
     train, prior = selected_baseline(rows, 'train'), selected_baseline(rows, 'prior')
+    counts = next((row['config']['corpus_counts'] for row in reversed(rows)
+                   if row['status'] == 'success' and 'corpus_counts' in row['config']), None)
+    if counts is None:
+        diagnostic = current_test_rows(rows, 'R1')[-1]['config']['addressability']
+        counts = dict(n_articles=stats['N_ARTICLES'],
+                      n_never_in_impressions=stats['NEWS_WITHOUT_FIRST_IMPRESSION_TS'],
+                      n_test_shown=diagnostic['n_unique_test_candidate_items'])
     lines = ['# Track B Results Table v2', '',
-             f"Full corpus: {stats['N_ARTICLES']:,} articles; {stats['NEWS_WITHOUT_FIRST_IMPRESSION_TS']:,} never appear in labelled impressions; "
-             '5,369 are shown on the test day. Absolute Recall@K is structurally small.', '',
+             f"Full corpus: {counts['n_articles']:,} articles; {counts['n_never_in_impressions']:,} never appear in labelled impressions; "
+             f"{counts['n_test_shown']:,} are shown on the test day. Absolute Recall@K is structurally small.", '',
              'R0b-prior has access to Nov 14 labels that retrieval model training does not. '
              'Empty-history fallback uses that same prior baseline for every new retrieval model.', '',
              f"Windows selected on validation: train-only {train['config']['window_hours']}h (`{train['run_id']}`); "

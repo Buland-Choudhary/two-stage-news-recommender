@@ -7,7 +7,7 @@ from typing import Iterable
 
 import numpy as np
 import pandas as pd
-from sklearn.metrics import roc_auc_score
+from scipy.stats import rankdata
 
 
 @dataclass(frozen=True)
@@ -52,7 +52,13 @@ class TrackA:
                 skipped += 1
                 continue
             values = group["score"].to_numpy(dtype=np.float64)
-            aucs.append(float(roc_auc_score(labels, values)))
+            positive = labels == labels.max()
+            n_positive = int(positive.sum())
+            n_negative = len(labels) - n_positive
+            # Mann-Whitney rank sum equals ROC AUC; average ranks award tied pairs 0.5.
+            ranks = rankdata(values, method='average')
+            aucs.append(float((ranks[positive].sum() - n_positive * (n_positive + 1) / 2)
+                              / (n_positive * n_negative)))
             order = np.argsort(-values)
             ranked_labels = labels[order]
             mrrs.append(_mrr(ranked_labels))

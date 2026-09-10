@@ -604,6 +604,19 @@ distribution during this rerun would confound the temperature correction.
 **Invalidates:** The outcome interpretation in original D-022; old rows remain.
 **Goes in the README?** yes — corrected logQ experiment.
 
+**Measured corrected outcome (2026-09-09):**
+Runs `r4_066`, `r4_067`, `r4_068` at temperature 0.05 yield Recall@50
+0.007843 +/- 0.000771, coverage@100 0.056419 +/- 0.008111, and Gini@100
+0.994693 +/- 0.000386 (mean +/- population standard deviation). Corrected
+R3 has 0.008469, 0.641574, and 0.841328 respectively. Mean Recall@50 fell,
+coverage fell and concentration rose; there is no diversity-gain claim.
+Recall@10 and nDCG@50 increased on average, so this is not a claim that
+every ranking metric worsened. The range ratios were 0.825207, 0.839358,
+0.690656; no ratio warning fired. Best epochs were 18, 28, 23. Seed 1
+reached the 30-epoch ceiling; seeds 0 and 2 stopped after five non-improving
+epochs. This is a measured negative diversity outcome for the corrected,
+bounded training protocol, not a rehabilitation of the old invalid runs.
+
 ### D-023 — Validation-selected baselines and all-time prior control
 **Date:** 2026-09-09
 **Task:** W3R-T3
@@ -744,3 +757,51 @@ would answer a different question and confound the requested comparison.
 It does not rehabilitate the old mis-scaled runs.
 
 **Goes in the README?** yes — loss objective and result interpretation.
+
+### D-027 — Faster equivalent per-impression AUC
+**Date:** 2026-09-09
+**Task:** W3R-T2, W4-T2
+**Type:** engineering
+**Spec section affected:** 02_ENGINEERING §5
+
+**What we found / decided:**
+Use SciPy average ranks and the Mann-Whitney rank-sum identity for each
+impression's AUC, retaining the macro average and degenerate-impression skips.
+This avoids constructing a full sklearn ROC calculation for every impression.
+
+**Why:** Repeated diagnostic evaluation was an avoidable CPU cost across seeds.
+The new path matches sklearn over randomized tied-score cases and preserves
+the existing hand-computed metric tests.
+
+**Alternatives considered:** Dropping the diagnostic would leave a requested
+deliverable incomplete. Pooling impressions would change the metric and is
+prohibited by the Track A contract.
+
+**Invalidates:** No metric definition, model, split, or selection rule.
+**Goes in the README?** no — implementation detail, covered by tests.
+
+### D-028 — Record the actual search backend and match inference devices
+**Date:** 2026-09-09
+**Task:** W4-T2
+**Type:** reproducibility
+**Spec section affected:** 02_ENGINEERING evaluation metadata
+
+**What we found / decided:**
+C1 sorts category priorities and C2 computes sparse exact cosine scores; neither
+uses FAISS. Correct their initially generic search metadata in place, with a
+dated note and no changes to their rankings or metrics. A CPU-only C4 diagnostic
+(`c4_063`) returned Recall@50 0.008482201, compared with 0.008468531 for the
+same R3 checkpoint evaluated on CUDA (`r3_061`). Preserve that row, mark it
+superseded for the matched comparison, and evaluate final C4 on CUDA as R3,
+R4 and R5 are evaluated. Record inference device in future checkpoint rows.
+
+**Why:** Exact search removes approximate-index error, not floating-point
+differences in tower inference. A matched attribution comparison should not
+also change inference backend. The diagnostic CPU pass was run while CUDA
+was occupied by R4 training; it did not retrain or select a different model.
+
+**Alternatives considered:** Silently replacing the CPU numbers or treating
+their small difference as a learned-model effect would obscure reproducibility.
+
+**Invalidates:** Only the CPU diagnostic's use as the final matched C4 row.
+**Goes in the README?** no — retain in the experiment audit and report.
